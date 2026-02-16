@@ -3,13 +3,18 @@ import numpy as np
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.feature_extraction.text import TfidfVectorizer
+from collections import Counter, defaultdict
+import re
 
 
 class DocumentReasoningGraph:
     def __init__(self, model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2"):
-        print("Loading embedding model...")
+        print("🚀 Loading advanced DRG model...")
         self.model = SentenceTransformer(model_name)
-        self.graph = nx.Graph()
+        self.graph = nx.DiGraph()  # Use directed graph for better reasoning
+        self.tfidf_vectorizer = TfidfVectorizer(max_features=100, stop_words='english')
+        self.entity_map = defaultdict(list)  # Maps entities to node IDs
 
     # -------------------------
     # STEP 1: add nodes
@@ -25,71 +30,188 @@ class DocumentReasoningGraph:
             )
 
     # -------------------------
-    # STEP 2: embeddings
+    # STEP 2: embeddings + importance
     # -------------------------
     def compute_embeddings(self):
-        print("Computing embeddings...")
+        print("📊 Computing embeddings and importance scores...")
 
         texts = [self.graph.nodes[n]["text"] for n in self.graph.nodes]
         embeddings = self.model.encode(texts, show_progress_bar=True)
 
+        # Compute TF-IDF for importance scoring
+        try:
+            tfidf_matrix = self.tfidf_vectorizer.fit_transform(texts)
+            tfidf_scores = np.asarray(tfidf_matrix.sum(axis=1)).flatten()
+        except:
+            # Fallback if TF-IDF fails
+            tfidf_scores = np.ones(len(texts))
+
         for i, node_id in enumerate(self.graph.nodes):
             self.graph.nodes[node_id]["embedding"] = embeddings[i]
+            self.graph.nodes[node_id]["importance"] = float(tfidf_scores[i])
+            self.graph.nodes[node_id]["length"] = len(texts[i].split())
+            
+        # Extract entities for linking
+        self._extract_entities()
 
     # -------------------------
-    # STEP 3: structural edges
+    # STEP 3: enhanced structural edges
     # -------------------------
     def add_structural_edges(self):
-        print("Adding structural edges...")
+        print("🔗 Adding enhanced structural edges...")
 
         nodes = list(self.graph.nodes)
 
         for i in range(len(nodes)):
+            n1 = nodes[i]
+            d1 = self.graph.nodes[n1]
+            
             for j in range(i + 1, len(nodes)):
-                n1 = nodes[i]
                 n2 = nodes[j]
-
-                d1 = self.graph.nodes[n1]
                 d2 = self.graph.nodes[n2]
 
-                # same page
-                if d1["page"] == d2["page"]:
-                    self.graph.add_edge(n1, n2, type="page")
+                # Adjacent sentences (directed - forward flow)
+                if (d1["page"] == d2["page"] and 
+                    d2["sent_index"] - d1["sent_index"] == 1):
+                    self.graph.add_edge(n1, n2, type="adjacent", weight=1.0)
+                    # Backward edge for context
+                    self.graph.add_edge(n2, n1, type="context", weight=0.8)
+                
+                # Same page (undirected)
+                elif d1["page"] == d2["page"]:
+                    self.graph.add_edge(n1, n2, type="page", weight=0.5)
+                    self.graph.add_edge(n2, n1, type="page", weight=0.5)
 
-                # same section
-                if d1["section"] == d2["section"]:
-                    self.graph.add_edge(n1, n2, type="section")
-
-                # adjacent sentences
-                if (
-                    d1["page"] == d2["page"]
-                    and abs(d1["sent_index"] - d2["sent_index"]) == 1
-                ):
-                    self.graph.add_edge(n1, n2, type="adjacent")
+                # Same section (undirected)
+                if d1["section"] == d2["section"] and d1["section"] != "GLOBAL":
+                    self.graph.add_edge(n1, n2, type="section", weight=0.6)
+                    self.graph.add_edge(n2, n1, type="section", weight=0.6)
+                
+                # Near neighbors (within 3 sentences)
+                if (d1["page"] == d2["page"] and 
+                    1 < abs(d1["sent_index"] - d2["sent_index"]) <= 3):
+                    proximity_weight = 1.0 / abs(d1["sent_index"] - d2["sent_index"])
+                    self.graph.add_edge(n1, n2, type="proximity", weight=proximity_weight)
+                    self.graph.add_edge(n2, n1, type="proximity", weight=proximity_weight)
 
     # -------------------------
-    # STEP 4: semantic edges
+    # STEP 4: enhanced semantic edges
     # -------------------------
     def add_semantic_edges(self, threshold=0.75):
-        print("Adding semantic edges...")
+        print("🧠 Adding semantic and entity-based edges...")
 
         node_ids = list(self.graph.nodes)
         embeddings = [self.graph.nodes[n]["embedding"] for n in node_ids]
 
         sim_matrix = cosine_similarity(embeddings)
+        
+        # Use dynamic threshold based on distribution
+        all_sims = []
+        for i in range(len(node_ids)):
+            for j in range(i + 1, len(node_ids)):
+                all_sims.append(sim_matrix[i][j])
+        
+        # Adaptive threshold: top percentile
+        if all_sims:
+            dynamic_threshold = max(threshold, np.percentile(all_sims, 85))
+        else:
+            dynamic_threshold = threshold
 
-        for i in tqdm(range(len(node_ids))):
+        edge_count = 0
+        for i in tqdm(range(len(node_ids)), desc="Semantic edges"):
             for j in range(i + 1, len(node_ids)):
                 sim = sim_matrix[i][j]
 
-                if sim >= threshold:
+                if sim >= dynamic_threshold:
+                    # Bidirectional semantic edges
                     self.graph.add_edge(
                         node_ids[i],
                         node_ids[j],
                         type="semantic",
                         weight=float(sim)
                     )
+                    self.graph.add_edge(
+                        node_ids[j],
+                        node_ids[i],
+                        type="semantic",
+                        weight=float(sim)
+                    )
+                    edge_count += 1
+        
+        print(f"  ✓ Added {edge_count} semantic edge pairs")
+        
+        # Add entity-based coreference edges
+        self._add_entity_edges()
 
+    # -------------------------
+    # HELPER: Extract entities for coreference
+    # -------------------------
+    def _extract_entities(self):
+        """Extract named entities and key terms from sentences"""
+        print("🏷️  Extracting entities...")
+        
+        # Simple pattern-based entity extraction
+        patterns = [
+            (r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b', 'PERSON/ORG'),  # Proper nouns
+            (r'\b\d{4}\b', 'YEAR'),  # Years
+            (r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b', 'DATE'),  # Dates
+            (r'\b\d+%\b', 'PERCENTAGE'),  # Percentages
+            (r'\b\d+\s*(?:marks?|points?|credits?)\b', 'SCORE'),  # Scores
+        ]
+        
+        for node_id in self.graph.nodes:
+            text = self.graph.nodes[node_id]['text']
+            entities = []
+            
+            for pattern, entity_type in patterns:
+                matches = re.findall(pattern, text, re.IGNORECASE)
+                for match in matches:
+                    entity_key = f"{entity_type}:{match.lower()}"
+                    entities.append(entity_key)
+                    self.entity_map[entity_key].append(node_id)
+            
+            self.graph.nodes[node_id]['entities'] = entities
+    
+    # -------------------------
+    # HELPER: Add entity-based edges
+    # -------------------------
+    def _add_entity_edges(self):
+        """Connect sentences that mention the same entities"""
+        print("🔗 Adding entity coreference edges...")
+        
+        edge_count = 0
+        for entity, node_list in self.entity_map.items():
+            if len(node_list) > 1:
+                # Connect all nodes mentioning this entity
+                for i in range(len(node_list)):
+                    for j in range(i + 1, len(node_list)):
+                        n1, n2 = node_list[i], node_list[j]
+                        # Add bidirectional entity edges
+                        self.graph.add_edge(n1, n2, type="entity", weight=0.85, entity=entity)
+                        self.graph.add_edge(n2, n1, type="entity", weight=0.85, entity=entity)
+                        edge_count += 1
+        
+        print(f"  ✓ Added {edge_count} entity coreference edge pairs")
+    
+    # -------------------------
+    # COMPUTE GRAPH METRICS
+    # -------------------------
+    def compute_graph_metrics(self):
+        """Compute node centrality and importance metrics"""
+        print("📈 Computing graph centrality metrics...")
+        
+        # PageRank for importance
+        try:
+            pagerank = nx.pagerank(self.graph, weight='weight')
+            for node_id in self.graph.nodes:
+                self.graph.nodes[node_id]['pagerank'] = pagerank.get(node_id, 0)
+        except:
+            pass
+        
+        # Degree centrality
+        for node_id in self.graph.nodes:
+            self.graph.nodes[node_id]['degree'] = self.graph.degree(node_id)
+    
     # -------------------------
     # BUILD FULL GRAPH
     # -------------------------
@@ -98,9 +220,17 @@ class DocumentReasoningGraph:
         self.compute_embeddings()
         self.add_structural_edges()
         self.add_semantic_edges()
+        self.compute_graph_metrics()
 
-        print("Graph built.")
-        print("Nodes:", self.graph.number_of_nodes())
-        print("Edges:", self.graph.number_of_edges())
+        print("\n✅ Enhanced DRG built successfully!")
+        print(f"   📝 Nodes: {self.graph.number_of_nodes()}")
+        print(f"   🔗 Edges: {self.graph.number_of_edges()}")
+        print(f"   🏷️  Entities: {len(self.entity_map)}")
+        
+        # Edge type breakdown
+        edge_types = Counter([data.get('type', 'unknown') for _, _, data in self.graph.edges(data=True)])
+        print("\n   Edge types:")
+        for edge_type, count in edge_types.most_common():
+            print(f"      • {edge_type}: {count}")
 
         return self.graph
