@@ -19,7 +19,7 @@ matplotlib.use('Agg')  # Non-interactive backend
 class SpanGraph:
     """Build and manage enhanced span-level document graph."""
     
-    def __init__(self, model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2"):
+    def __init__(self, model_name="sentence-transformers/LaBSE"):
         print("🔗 Initializing Enhanced Span Graph Builder...")
         self.model = SentenceTransformer(model_name)
         self.graph = nx.DiGraph()  # Directed for better reasoning

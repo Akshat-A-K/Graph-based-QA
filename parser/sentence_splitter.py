@@ -24,8 +24,8 @@ def split_into_sentences(text: str) -> List[str]:
         pass
     
     # Fallback: Regex-based sentence splitting (Python 3.14 compatible)
-    # Split on periods, question marks, exclamation marks followed by space/newline
-    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
+    # Split on sentence-ending punctuation including Hindi danda characters
+    sentences = re.split(r'(?<=[.!?\u0964\u0965])\s+', text)
     
     # Filter out very short sentences
     sentences = [sent.strip() for sent in sentences if len(sent.strip()) > 3]

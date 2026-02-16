@@ -15,7 +15,9 @@ from .advanced_retrieval import (
     BM25Retriever,
     GraphCentrality,
     HybridScorer,
-    QueryExpander
+    QueryExpander,
+    normalize_text,
+    tokenize
 )
 
 
@@ -30,8 +32,8 @@ class EnhancedHybridReasoner:
         sentence_graph: nx.Graph,
         span_graph: nx.Graph,
         knowledge_graph: Dict,
-        model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
-        use_cross_encoder=False
+        model_name="sentence-transformers/LaBSE",
+        use_cross_encoder=True
     ):
         self.sentence_graph = sentence_graph
         self.span_graph = span_graph
@@ -51,11 +53,12 @@ class EnhancedHybridReasoner:
         # Cross-encoder for re-ranking (optional, slower but more accurate)
         self.use_cross_encoder = use_cross_encoder
         if use_cross_encoder:
-            self.cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+            self.cross_encoder = CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1')
         
         # Initialize BM25 and centrality
         self._initialize_bm25()
         self._compute_centrality()
+        self._cache_entity_embeddings()
         
         print(f"Enhanced hybrid reasoner initialized:")
         print(f"  - Sentence nodes: {sentence_graph.number_of_nodes()}")
@@ -64,24 +67,111 @@ class EnhancedHybridReasoner:
         print(f"  - BM25 index: ✓")
         print(f"  - Graph centrality: ✓")
         print(f"  - Cross-encoder: {'✓' if use_cross_encoder else '✗'}")
+
+    def _cache_entity_embeddings(self):
+        """Precompute KG entity embeddings for faster retrieval."""
+        entities = self.kg.get("entities", [])
+        if not entities:
+            self.entity_embeddings = []
+            return
+        texts = [entity["text"] for entity in entities]
+        self.entity_embeddings = self.model.encode(texts, show_progress_bar=False)
     
     def _initialize_bm25(self):
         """Build BM25 indices for lexical matching."""
         # Span BM25
-        span_texts = [
-            self.span_graph.nodes[n]["text"] 
-            for n in sorted(self.span_graph.nodes())
-        ]
+        self.span_node_ids = sorted(self.span_graph.nodes())
+        self.span_id_to_doc = {span_id: idx for idx, span_id in enumerate(self.span_node_ids)}
+        span_texts = [self.span_graph.nodes[n]["text"] for n in self.span_node_ids]
         self.bm25_spans = BM25Retriever()
         self.bm25_spans.fit(span_texts)
         
         # Sentence BM25
-        sent_texts = [
-            self.sentence_graph.nodes[n]["text"] 
-            for n in sorted(self.sentence_graph.nodes())
-        ]
+        self.sentence_node_ids = sorted(self.sentence_graph.nodes())
+        self.sentence_id_to_doc = {sent_id: idx for idx, sent_id in enumerate(self.sentence_node_ids)}
+        sent_texts = [self.sentence_graph.nodes[n]["text"] for n in self.sentence_node_ids]
         self.bm25_sentences = BM25Retriever()
         self.bm25_sentences.fit(sent_texts)
+
+    def _score_sentences(self, query: str) -> Dict[int, float]:
+        """Score sentence nodes for query relevance."""
+        query_tokens = set(tokenize(query))
+        q_emb = self.embed_query(query)
+
+        bm25_scores = {}
+        for sent_id in self.sentence_node_ids:
+            doc_id = self.sentence_id_to_doc.get(sent_id)
+            if doc_id is not None:
+                bm25_scores[sent_id] = self.bm25_sentences.score(query, doc_id)
+
+        bm25_vals = list(bm25_scores.values())
+        bm25_min = min(bm25_vals) if bm25_vals else 0.0
+        bm25_max = max(bm25_vals) if bm25_vals else 1.0
+
+        sentence_scores = {}
+        for sent_id in self.sentence_node_ids:
+            text = self.sentence_graph.nodes[sent_id]["text"]
+            text_tokens = set(tokenize(text))
+            overlap = min(1.0, len(query_tokens & text_tokens) / max(1, len(query_tokens)))
+
+            emb = self.sentence_graph.nodes[sent_id].get("embedding")
+            if emb is not None:
+                sem_score = self.cosine(q_emb, emb)
+            else:
+                sem_score = 0.0
+
+            raw_bm25 = bm25_scores.get(sent_id, 0.0)
+            if bm25_max != bm25_min:
+                bm25_score = (raw_bm25 - bm25_min) / (bm25_max - bm25_min)
+            else:
+                bm25_score = 0.0
+
+            cent_score = self.sentence_centrality.get(sent_id, 0) if self.sentence_centrality else 0.0
+
+            sentence_scores[sent_id] = (
+                0.45 * sem_score +
+                0.25 * overlap +
+                0.2 * bm25_score +
+                0.1 * cent_score
+            )
+
+        return sentence_scores
+
+    def _semantic_expansions(self, query: str, k: int = 3, tokens_per_span: int = 4) -> List[str]:
+        """Build transformer-driven query expansions using top semantic spans."""
+        q_emb = self.embed_query(query)
+        scored = []
+        for span_id in self.span_graph.nodes:
+            emb = self.span_graph.nodes[span_id].get("embedding")
+            if emb is None:
+                continue
+            sim = self.cosine(q_emb, emb)
+            scored.append((span_id, sim))
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+        top_spans = [sid for sid, _ in scored[:k]]
+
+        query_tokens = set(tokenize(query))
+        variations = [query]
+
+        for span_id in top_spans:
+            text = self.span_graph.nodes[span_id]["text"]
+            tokens = [t for t in tokenize(text) if t not in query_tokens and len(t) > 2]
+            if not tokens:
+                continue
+            expansion = query + " " + " ".join(tokens[:tokens_per_span])
+            if normalize_text(expansion) != normalize_text(query):
+                variations.append(expansion)
+
+        seen = set()
+        unique = []
+        for item in variations:
+            key = normalize_text(item)
+            if key not in seen:
+                seen.add(key)
+                unique.append(item)
+
+        return unique
     
     def _compute_centrality(self):
         """Compute node importance using graph algorithms."""
@@ -118,6 +208,15 @@ class EnhancedHybridReasoner:
         """
         Hybrid retrieval: BM25 + Semantic + Centrality
         """
+        query_norm = normalize_text(query)
+        query_tokens = set(tokenize(query))
+        time_tokens = {"when", "deadline", "due", "date", "time", "antim", "aakhri", "tarikh", "tithi"}
+        format_tokens = {"submission", "format", "structure", "zip", "file"}
+        neg_tokens = {"not", "no", "never", "cannot", "must", "shall", "required"}
+        is_time_query = bool(query_tokens & time_tokens)
+        is_constraint_query = bool(query_tokens & neg_tokens)
+        is_format_query = {"submission", "format"}.issubset(query_tokens) or (query_tokens & format_tokens)
+
         q_emb = self.embed_query(query)
         
         # 1. Semantic scores (embedding similarity)
@@ -128,15 +227,31 @@ class EnhancedHybridReasoner:
             
             # Type-specific bonuses
             span_type = self.span_graph.nodes[span_id]["span_type"]
-            text = self.span_graph.nodes[span_id]["text"].lower()
+            text = self.span_graph.nodes[span_id]["text"]
+            text_norm = normalize_text(text)
+            section_norm = normalize_text(self.span_graph.nodes[span_id].get("section", ""))
+            text_tokens = set(tokenize(text))
+            sentence_id = self.span_graph.nodes[span_id].get("sentence_id")
+            sentence_text = self.sentence_graph.nodes.get(sentence_id, {}).get("text", "")
+            sentence_tokens = set(tokenize(sentence_text))
             
             bonus = 0.0
-            if span_type in ["temporal", "deadline"] and "when" in query.lower():
-                bonus += 0.15
-            if span_type in ["condition", "negation"]:
-                bonus += 0.1
-            if "deadline" in query.lower() and "deadline" in text:
+            if span_type in ["temporal", "deadline"] and is_time_query:
                 bonus += 0.2
+            if span_type in ["condition", "negation", "requirement"] and is_constraint_query:
+                bonus += 0.1
+            if "deadline" in query_norm and "deadline" in text_norm:
+                bonus += 0.15
+            if is_format_query and "submission format" in text_norm:
+                bonus += 0.2
+            if is_format_query and "submission format" in section_norm:
+                bonus += 0.2
+
+            overlap = len(query_tokens & text_tokens)
+            overlap_bonus = min(0.2, 0.04 * overlap)
+            bonus += overlap_bonus
+            if sentence_tokens & query_tokens:
+                bonus += 0.05
             
             semantic_scores[span_id] = sim + bonus
         
@@ -144,7 +259,7 @@ class EnhancedHybridReasoner:
         lexical_scores = {}
         bm25_results = self.bm25_spans.retrieve(query, k=len(self.span_graph.nodes))
         for doc_id, score in bm25_results:
-            span_id = sorted(self.span_graph.nodes())[doc_id]
+            span_id = self.span_node_ids[doc_id]
             lexical_scores[span_id] = score
         
         # 3. Centrality scores
@@ -175,6 +290,7 @@ class EnhancedHybridReasoner:
         """
         Graph traversal with centrality-guided expansion.
         """
+        query_tokens = set(tokenize(query))
         # Start with hybrid retrieval seeds
         seeds = self.enhanced_span_retrieval(query, k=5)
         
@@ -219,12 +335,14 @@ class EnhancedHybridReasoner:
             cent_bonus = self.span_centrality.get(span_id, 0) * 0.2
             
             # Discourse bonus
-            text = self.span_graph.nodes[span_id]["text"].lower()
+            text = self.span_graph.nodes[span_id]["text"]
+            text_tokens = set(tokenize(text))
             disc_bonus = 0.0
-            if any(m in text for m in ["except", "unless", "not", "no"]):
+            if any(m in normalize_text(text) for m in ["except", "unless", "not", "no"]):
                 disc_bonus += 0.1
+            overlap_bonus = min(0.2, 0.04 * len(text_tokens & query_tokens))
             
-            final_score = sem_score + cent_bonus + disc_bonus
+            final_score = sem_score + cent_bonus + disc_bonus + overlap_bonus
             scored.append((span_id, final_score))
         
         scored.sort(key=lambda x: x[1], reverse=True)
@@ -238,8 +356,8 @@ class EnhancedHybridReasoner:
         """
         Retrieve using expanded queries and merge results.
         """
-        # Generate query variations
-        query_variations = self.query_expander.expand(query)
+        # Generate transformer-driven query variations
+        query_variations = self._semantic_expansions(query, k=3)
         
         # Retrieve for each variation
         all_results = {}
@@ -290,6 +408,133 @@ class EnhancedHybridReasoner:
         return [sid for sid, _ in ranked[:top_k]]
     
     # ========================================
+    # Query Intent Classification
+    # ========================================
+    
+    def classify_query_intent(self, query: str) -> Dict[str, float]:
+        """
+        Classify query intent (WHAT, WHEN, HOW, WHERE, WHY) and return intent weights.
+        Higher weights for detected intents improve retrieval targeting.
+        """
+        query_lower = normalize_text(query)
+        
+        what_keywords = {'what', 'kya', 'क्या', 'which', 'kaun', 'कौन', 'definition', 'परिभाषा'}
+        when_keywords = {'when', 'kab', 'कब', 'deadline', 'date', 'तारीख', 'due', 'समय'}
+        how_keywords = {'how', 'kaise', 'कैसे', 'process', 'format', 'तरीका', 'structure', 'संरचना'}
+        where_keywords = {'where', 'kahan', 'कहाँ', 'location', 'portal', 'link'}
+        why_keywords = {'why', 'kyun', 'क्यों', 'reason', 'कारण', 'purpose', 'उद्देश्य'}
+        
+        intent_weights = {'what': 1.0, 'when': 1.0, 'how': 1.0, 'where': 1.0, 'why': 1.0}
+        
+        if any(kw in query_lower for kw in what_keywords):
+            intent_weights['what'] = 1.3
+        if any(kw in query_lower for kw in when_keywords):
+            intent_weights['when'] = 1.4  # Highest - time-based queries are very specific
+        if any(kw in query_lower for kw in how_keywords):
+            intent_weights['how'] = 1.3
+        if any(kw in query_lower for kw in where_keywords):
+            intent_weights['where'] = 1.2
+        if any(kw in query_lower for kw in why_keywords):
+            intent_weights['why'] = 1.2
+            
+        return intent_weights
+    
+    # ========================================
+    # Evidence Diversity + Confidence
+    # ========================================
+    
+    def get_diverse_evidence(self, span_ids: List[int], max_spans: int = 5) -> List[int]:
+        """
+        Select diverse spans from different sections to avoid redundancy.
+        Prefers spans from different sections first.
+        """
+        if len(span_ids) <= max_spans:
+            return span_ids
+            
+        selected = []
+        covered_sections = set()
+        
+        # First pass: prioritize different sections
+        for span_id in span_ids:
+            if len(selected) >= max_spans:
+                break
+            section = normalize_text(self.span_graph.nodes[span_id].get("section", "unknown"))
+            if section not in covered_sections:
+                selected.append(span_id)
+                covered_sections.add(section)
+        
+        # Second pass: fill remaining slots regardless of section if needed
+        for span_id in span_ids:
+            if len(selected) >= max_spans:
+                break
+            if span_id not in selected:
+                selected.append(span_id)
+                
+        return selected
+    
+    def calculate_confidence(self, span_ids: List[int], scores: List[float]) -> Tuple[float, str]:
+        """
+        Calculate confidence (0-1) based on evidence quality and agreement.
+        Returns (confidence_score, confidence_label)
+        """
+        if not span_ids or not scores:
+            return 0.0, "Low"
+        
+        # Score confidence: how strong are the scores?
+        avg_score = np.mean(scores) if scores else 0.0
+        score_confidence = min(max(avg_score, 0.0), 1.0)
+        
+        # Agreement confidence: do multiple sources agree?
+        num_evidence = len(span_ids)
+        evidence_confidence = min(num_evidence / 3.0, 1.0)  # 3+ sources = high confidence
+        
+        # Consistency confidence: are scores similar?
+        if len(scores) > 1:
+            score_std = np.std(scores)
+            consistency_confidence = max(0.0, 1.0 - score_std)  # Low std = high consistency
+        else:
+            consistency_confidence = 0.5
+        
+        # Combined confidence
+        confidence = (
+            score_confidence * 0.4 + 
+            evidence_confidence * 0.4 + 
+            consistency_confidence * 0.2
+        )
+        
+        if confidence > 0.75:
+            confidence_label = "High ✓"
+        elif confidence > 0.5:
+            confidence_label = "Medium ◐"
+        else:
+            confidence_label = "Low ✗"
+            
+        return confidence, confidence_label
+    
+    def verify_answer_support(self, answer_text: str, evidence_spans: List[str]) -> Tuple[bool, float]:
+        """
+        Verify that extracted answer is actually supported by evidence.
+        Returns (is_valid, coverage_ratio)
+        """
+        answer_tokens = set(tokenize(answer_text.lower()))
+        
+        if not answer_tokens:
+            return False, 0.0
+        
+        evidence_tokens = set()
+        for span in evidence_spans:
+            evidence_tokens.update(tokenize(span.lower()))
+        
+        # Token overlap - how many answer tokens appear in evidence?
+        matching_tokens = answer_tokens & evidence_tokens
+        coverage = len(matching_tokens) / len(answer_tokens) if answer_tokens else 0.0
+        
+        # Valid if 50%+ of answer tokens appear in evidence
+        is_valid = coverage >= 0.5
+        
+        return is_valid, coverage
+    
+    # ========================================
     # Main Enhanced Reasoning
     # ========================================
     
@@ -297,6 +542,14 @@ class EnhancedHybridReasoner:
         """
         Best reasoning strategy combining all improvements.
         """
+        query_tokens = set(tokenize(query))
+        query_norm = normalize_text(query)
+        time_tokens = {"when", "deadline", "due", "date", "time", "antim", "aakhri", "tarikh", "tithi"}
+        format_tokens = {"submission", "format", "structure", "zip", "file"}
+        is_time_query = bool(query_tokens & time_tokens)
+        is_format_query = {"submission", "format"}.issubset(query_tokens) or (query_tokens & format_tokens)
+
+        sentence_scores = self._score_sentences(query)
         # Step 1: Hybrid retrieval (BM25 + Semantic + Centrality)
         hybrid_results = self.enhanced_span_retrieval(query, k=k*2)
         
@@ -320,60 +573,154 @@ class EnhancedHybridReasoner:
         q_emb = self.embed_query(query)
         final_scores = []
         
+        bm25_raw_scores = {}
         for span_id in all_candidates:
             if span_id not in self.span_graph.nodes:
                 continue
-            
+            doc_id = self.span_id_to_doc.get(span_id)
+            if doc_id is not None:
+                bm25_raw_scores[span_id] = self.bm25_spans.score(query, doc_id)
+
+        bm25_values = list(bm25_raw_scores.values())
+        bm25_min = min(bm25_values) if bm25_values else 0.0
+        bm25_max = max(bm25_values) if bm25_values else 1.0
+
+        for span_id in all_candidates:
+            if span_id not in self.span_graph.nodes:
+                continue
+
             # Semantic score
             emb = self.span_graph.nodes[span_id]["embedding"]
             sem_score = self.cosine(q_emb, emb)
-            
+
             # Centrality score
             cent_score = self.span_centrality.get(span_id, 0)
-            
+
+            # Lexical overlap score
+            text = self.span_graph.nodes[span_id]["text"]
+            text_tokens = set(tokenize(text))
+            overlap_score = min(1.0, len(query_tokens & text_tokens) / max(1, len(query_tokens)))
+
+            # Section/topic bonus
+            section_norm = normalize_text(self.span_graph.nodes[span_id].get("section", ""))
+            section_bonus = 0.0
+            if is_format_query and "submission format" in section_norm:
+                section_bonus += 0.15
+            if is_time_query and "deadline" in section_norm:
+                section_bonus += 0.1
+
+            # Sentence-level relevance bonus
+            sentence_id = self.span_graph.nodes[span_id].get("sentence_id")
+            sentence_bonus = sentence_scores.get(sentence_id, 0.0)
+
+            # BM25 score (min-max normalized for candidates)
+            raw_bm25 = bm25_raw_scores.get(span_id, 0.0)
+            if bm25_max != bm25_min:
+                bm25_score = (raw_bm25 - bm25_min) / (bm25_max - bm25_min)
+            else:
+                bm25_score = 0.0
+
             # Presence bonuses
             in_hybrid = 1.0 if span_id in hybrid_results else 0.0
             in_traversal = 1.0 if span_id in traversal_results else 0.0
             in_expansion = 1.0 if span_id in expansion_results else 0.0
             in_kg = 1.0 if span_id in kg_span_ids else 0.0
-            
+
             # Combined score
             final_score = (
-                0.4 * sem_score +
-                0.2 * cent_score +
+                0.35 * sem_score +
+                0.15 * cent_score +
+                0.15 * overlap_score +
+                0.1 * bm25_score +
+                0.05 * section_bonus +
+                0.1 * sentence_bonus +
                 0.1 * in_hybrid +
                 0.1 * in_traversal +
-                0.1 * in_expansion +
-                0.1 * in_kg
+                0.05 * in_expansion +
+                0.05 * in_kg
             )
-            
+
             final_scores.append((span_id, final_score))
         
         final_scores.sort(key=lambda x: x[1], reverse=True)
-        top_candidates = [sid for sid, _ in final_scores[:k*2]]
+        ranked_candidates = [sid for sid, _ in final_scores]
+        top_candidates = ranked_candidates[:k*2]
         
         # Step 6: Optional cross-encoder re-ranking
         if self.use_cross_encoder:
-            final_spans = self.rerank_with_cross_encoder(query, top_candidates, top_k=k)
+            reranked = self.rerank_with_cross_encoder(query, top_candidates, top_k=k*2)
         else:
-            final_spans = top_candidates[:k]
+            reranked = top_candidates
+
+        def is_relevant(span_id: int) -> bool:
+            text = self.span_graph.nodes[span_id]["text"]
+            text_tokens = set(tokenize(text))
+            overlap = len(query_tokens & text_tokens)
+            span_type = self.span_graph.nodes[span_id].get("span_type", "")
+            section_norm = normalize_text(self.span_graph.nodes[span_id].get("section", ""))
+            text_norm = normalize_text(text)
+            sentence_id = self.span_graph.nodes[span_id].get("sentence_id")
+            sentence_score = sentence_scores.get(sentence_id, 0.0)
+
+            if overlap >= 1:
+                return True
+            if is_format_query:
+                if "submission format" in text_norm or "submission format" in section_norm:
+                    return True
+                if any(token in text_norm for token in ["zip", "file structure", "submission portal"]):
+                    return True
+                return False
+            if is_time_query and span_type in {"temporal", "deadline"}:
+                return True
+            if sentence_score >= 0.4:
+                return True
+            return False
+
+        filtered = [sid for sid in reranked if is_relevant(sid)]
+        if len(filtered) < k:
+            final_spans = (filtered + [sid for sid in reranked if sid not in filtered])[:k]
+        else:
+            final_spans = filtered[:k]
+        
+        # Apply diversity filtering to avoid redundant evidence
+        diverse_spans = self.get_diverse_evidence(final_spans, max_spans=k)
+        
+        # Calculate confidence based on evidence quality
+        confident_scores = []
+        for span_id in diverse_spans:
+            if span_id in self.span_graph.nodes:
+                # Find score from final_scores
+                for sid, score in final_scores:
+                    if sid == span_id:
+                        confident_scores.append(score)
+                        break
+        
+        confidence, confidence_label = self.calculate_confidence(
+            diverse_spans, 
+            confident_scores if confident_scores else [0.5] * len(diverse_spans)
+        )
         
         return {
-            "final_spans": final_spans,
+            "final_spans": diverse_spans,
             "hybrid_results": hybrid_results[:5],
             "traversal_results": traversal_results[:5],
             "expansion_results": expansion_results[:5],
             "kg_entities": kg_entity_ids,
-            "kg_spans": list(kg_span_ids)[:5]
+            "kg_spans": list(kg_span_ids)[:5],
+            "confidence": confidence,
+            "confidence_label": confidence_label
         }
     
     def _kg_entity_retrieval(self, query: str, k: int = 5) -> List[int]:
         """Retrieve relevant KG entities (from original)."""
         q_emb = self.embed_query(query)
-        
+
         scores = []
-        for entity in self.kg["entities"]:
-            entity_emb = self.model.encode([entity["text"]])[0]
+        for idx, entity in enumerate(self.kg["entities"]):
+            if idx < len(self.entity_embeddings):
+                entity_emb = self.entity_embeddings[idx]
+            else:
+                entity_emb = self.model.encode([entity["text"]])[0]
             sim = self.cosine(q_emb, entity_emb)
             
             # Type-specific boost

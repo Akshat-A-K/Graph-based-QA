@@ -15,6 +15,7 @@ A comprehensive Python framework for extracting precise answers from PDF documen
 - [Quick Start](#-quick-start)
 - [Detailed Usage](#-detailed-usage)
 - [How It Works (Deep Dive)](#-how-it-works-deep-dive)
+- [Accuracy Improvements (v2.0)](#-recent-accuracy-improvements-v20)
 - [Graph Types Explained](#-graph-types-explained)
 - [Algorithms & Methods](#-algorithms--methods)
 - [Code Structure](#-code-structure)
@@ -69,18 +70,22 @@ This is a **graph-based question answering system** that reads PDF documents and
 
 ### Hybrid Retrieval System
 - **BM25**: Lexical term matching (keyword-based)
-- **Semantic Embeddings**: Multilingual sentence transformers (768-dim)
+- **Semantic Embeddings**: Multilingual sentence transformers (LaBSE by default)
 - **Graph Centrality**: PageRank and betweenness centrality
-- **Query Expansion**: Synonym-based query reformulation
-- **Cross-Encoder Re-ranking**: (Optional) Pairwise scoring
+- **Query Expansion**: Transformer-driven semantic span expansion (no fixed lists)
+- **Cross-Encoder Re-ranking**: Enabled by default for higher precision
 
 ### Advanced Features
 - 🌍 **Multilingual**: Supports 50+ languages (English, Hindi, Hinglish, etc.)
 - 🔍 **Zero-Shot**: No training required - works on any document
 - 📊 **Graph Visualization**: Export graphs as PNG images (NetworkX layouts)
-- 💡 **Evidence-Based**: Shows supporting text spans with confidence
+- 💡 **Evidence-Based**: Shows supporting text spans with confidence scores
 - 🎨 **Streamlit UI**: Interactive web interface for easy usage
 - ⚡ **Fast Processing**: Efficient graph algorithms with NetworkX
+- 📈 **Confidence Scoring**: Automatically calculates answer confidence based on evidence quality, agreement, and consistency
+- 🎯 **Query Intent Classification**: Detects question intent (WHAT, WHEN, HOW, WHERE, WHY) for targeted retrieval
+- 🔄 **Evidence Diversity**: Prefers evidence from different sections to avoid redundancy
+- ✓ **Answer Validation**: Verifies extracted answers are actually supported by retrieved evidence
 
 ---
 
@@ -117,7 +122,7 @@ This is a **graph-based question answering system** that reads PDF documents and
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  Step 4: Build Document Reasoning Graph (DRG)                   │
-│  ├─ Compute embeddings (multilingual-mpnet-base-v2)             │
+│  ├─ Compute embeddings (LaBSE)                                  │
 │  ├─ Add structural edges (adjacent, same-page, same-section)    │
 │  ├─ Add semantic edges (embedding similarity > threshold)       │
 │  ├─ Extract entities (dates, numbers, requirements)             │
@@ -158,7 +163,7 @@ This is a **graph-based question answering system** that reads PDF documents and
 │  ├─ Semantic retrieval (embedding similarity)                    │
 │  ├─ Centrality-based ranking (importance scores)                 │
 │  ├─ Graph traversal (neighbor expansion)                         │
-│  ├─ Query expansion (synonym-based)                              │
+│  ├─ Query expansion (semantic span expansion)                    │
 │  ├─ KG-guided retrieval (entity matching)                        │
 │  └─ Hybrid scoring (combine all signals)                         │
 └────────┬─────────────────────────────────────────────────────────┘
@@ -540,9 +545,7 @@ def build_nodes(pages: List[Dict]) -> List[Dict]:
 class DocumentReasoningGraph:
     def __init__(self):
         self.graph = nx.DiGraph()  # Directed graph
-        self.model = SentenceTransformer(
-            'paraphrase-multilingual-mpnet-base-v2'
-        )
+        self.model = SentenceTransformer('LaBSE')
 ```
 
 **Step 2: Add Nodes**
@@ -584,11 +587,12 @@ def compute_embeddings(self):
 ```
 
 **Embedding Model Details:**
-- Name: `paraphrase-multilingual-mpnet-base-v2`
+- Name: `LaBSE` (Language-agnostic BERT Sentence Embeddings)
 - Dimension: 768
-- Languages: 50+ (English, Hindi, Spanish, French, German, etc.)
-- Training: Paraphrase mining on multilingual corpus
-- Performance: SOTA on semantic similarity tasks
+- Languages: 109 (including English, Hindi, Hinglish)
+- Training: Cross-lingual sentence alignment from Wikipedia
+- Performance: SOTA on cross-lingual retrieval & multilingual STS
+- Advantages: Superior zero-shot multilingual performance
 
 **Step 4: Add Structural Edges**
 ```python
@@ -815,7 +819,7 @@ class SpanGraph:
     def __init__(self):
         self.graph = nx.DiGraph()
         self.model = SentenceTransformer(
-            'paraphrase-multilingual-mpnet-base-v2'
+            'LaBSE'  # Stronger multilingual embeddings
         )
     
     def add_nodes(self, spans: List[Dict]):
@@ -1044,8 +1048,11 @@ class EnhancedHybridReasoner:
         self.kg = knowledge_graph
         
         # Load model
-        self.model = SentenceTransformer(
-            'paraphrase-multilingual-mpnet-base-v2'
+        self.model = SentenceTransformer('LaBSE')
+        
+        # Cross-encoder for re-ranking (enabled by default)
+        self.cross_encoder = CrossEncoder(
+            'cross-encoder/mmarco-mMiniLMv2-L12-H384-v1'
         )
         
         # Initialize retrieval components
@@ -1388,19 +1395,27 @@ def _query_expansion_retrieval(self, query: str, k: int) -> List[int]:
 
 ### Embedding Model
 
-**Model**: `paraphrase-multilingual-mpnet-base-v2`
-- **Architecture**: XLM-RoBERTa base (12 layers, 768 hidden, 12 heads)
-- **Training**: Paraphrase pairs from 50+ languages
-- **Pooling**: Mean pooling of token embeddings
+**Embedding Model: LaBSE**
+- **Architecture**: mBERT-based (12 layers, 768 hidden, 12 heads)
+- **Training**: Cross-lingual sentence alignment (Wikipedia pairs)
+- **Pooling**: [CLS] token + max pooling
 - **Normalization**: L2 normalized for cosine similarity
 - **Performance**: 
-  - STS benchmark: 84.5
-  - Multilingual: 79.2 average
+  - Cross-lingual retrieval: 89.3 (BUCC.en-de)
+  - Multilingual search: 84.2 average
+  - 109 languages supported
 
-**Why multilingual?**
+**Why LaBSE?**
+- Superior cross-lingual zero-shot performance
 - Supports Hindi queries: "क्या डेडलाइन है?"
 - Supports Hinglish: "Deadline kya hai?"
-- Cross-lingual retrieval works automatically
+- Better multilingual alignment than mpnet
+
+**Cross-Encoder for Re-ranking**
+- Model: `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`
+- Type: Pairwise ranking (query, span) → relevance score
+- Performance: Higher precision queries when enabled
+- Default: Enabled (can be toggled in config)
 
 ### BM25 Algorithm
 
@@ -1574,7 +1589,7 @@ graph-based-qa/
 │   │   ├── enhanced_reasoning()     # Multi-strategy QA
 │   │   ├── _hybrid_retrieval()      # BM25 + semantic
 │   │   ├── _graph_traversal_retrieval() # Graph navigation
-│   │   ├── _query_expansion_retrieval() # Synonym-based
+│   │   ├── _semantic_expansions()   # Transformer-driven expansion
 │   │   └── _kg_entity_retrieval()   # Entity matching
 │   │
 │   └── evaluator.py                 # Evaluation metrics
@@ -1838,6 +1853,100 @@ pip install -r requirements.txt
 ```bash
 pip list | grep -E "(networkx|sentence-transformers|streamlit|pymupdf)"
 ```
+
+---
+
+## ✨ Recent Accuracy Improvements (v2.0)
+
+This release includes several high-impact improvements designed to boost answer accuracy and reliability:
+
+### 1. Confidence Scoring
+
+Automatically calculates answer confidence (0-100%) based on:
+- **Score Quality (40%)**: How high are the retrieval scores?
+- **Evidence Agreement (40%)**: Multiple sources supporting the same answer?
+- **Score Consistency (20%)**: Are the top evidence spans similar in quality?
+
+**Example Output:**
+```
+Answer: "March 5, 2024"
+Confidence: 88% High ✓
+Evidence Spans: 3 from different sections
+```
+
+**Implementation:**
+```python
+def calculate_confidence(span_ids, scores) -> Tuple[float, str]:
+    score_confidence = min(avg_score, 1.0)      # 40% weight
+    evidence_confidence = min(num_sources / 3.0, 1.0) # 40% weight
+    consistency_confidence = 1.0 - score_std    # 20% weight
+    return combined_confidence, label
+```
+
+### 2. Evidence Diversity
+
+Avoids redundant evidence by preferring spans from **different document sections**:
+
+```
+WITHOUT diversity filtering:
+✗ "The deadline is March 5"
+✗ "Submission deadline: March 5"  
+✓ "All materials due by March 5"
+
+WITH diversity filtering:
+✓ "The deadline is March 5"      (section: Submission Rules)
+✓ "Grading occurs on March 6"     (section: Timeline)
+✓ "Late submissions after March 6 incur penalty" (section: Late Submission Policy)
+```
+
+**Benefits:**
+- Reduces redundant information
+- Provides more comprehensive answers
+- Better coverage of document context
+
+### 3. Query Intent Classification
+
+Intelligently detects what type of question is being asked:
+
+| Intent | Keywords | Boost Factor |
+|--------|----------|--------------|
+| **WHAT** | what, कया, मkya | 1.3x |
+| **WHEN** | deadline, कब, kab | 1.4x (highest) |
+| **HOW** | process, कaise, format | 1.3x |
+| **WHERE** | location, portal | 1.2x |
+| **WHY** | reason, कyun | 1.2x |
+
+**Example:**
+```python
+# Query: "When is the deadline?"
+# Intent detected: WHEN (1.4x boost)
+# → System prioritizes temporal/deadline-related spans
+```
+
+### 4. Answer Validation
+
+Verifies that extracted answers are **actually supported** by the retrieved evidence:
+
+```python
+def verify_answer(answer_text, evidence_spans) -> Tuple[bool, float]:
+    # Check: Do 50%+ of answer tokens appear in evidence?
+    coverage = len(answer_tokens ∩ evidence_tokens) / len(answer_tokens)
+    is_valid = coverage >= 0.5
+    return is_valid, coverage_ratio
+```
+
+**Impact:**
+- Prevents hallucinated answers
+- Ensures faithfulness to source document
+- Unsafe answers automatically filtered
+
+### 5. Improved Answer Extraction
+
+Better answer selection strategy:
+1. Score spans using overlap with query + temporal/format bonuses
+2. Combine short answers with surrounding context
+3. Validate against evidence before returning
+4. Truncate intelligently (at sentence boundaries when possible)
 
 ---
 

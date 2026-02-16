@@ -6,11 +6,30 @@ Advanced retrieval techniques without GNN:
 - Hybrid scoring
 """
 
+import math
+import re
+import unicodedata
 import numpy as np
 import networkx as nx
 from typing import List, Dict, Tuple
 from collections import Counter
-import math
+
+
+def normalize_text(text: str) -> str:
+    """Normalize text for retrieval across scripts and punctuation."""
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFKC", text)
+    normalized = normalized.replace("\u0964", ".").replace("\u0965", ".")
+    normalized = normalized.casefold()
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized
+
+
+def tokenize(text: str) -> List[str]:
+    """Tokenize normalized text using Unicode-aware word boundaries."""
+    normalized = normalize_text(text)
+    return re.findall(r"\w+", normalized, flags=re.UNICODE)
 
 
 class BM25Retriever:
@@ -28,13 +47,14 @@ class BM25Retriever:
     def fit(self, documents: List[str]):
         """Build BM25 index."""
         self.docs = documents
-        self.doc_len = [len(doc.split()) for doc in documents]
+        tokenized = [tokenize(doc) for doc in documents]
+        self.doc_len = [len(tokens) for tokens in tokenized]
         self.avgdl = sum(self.doc_len) / len(self.doc_len)
         
         # Calculate document frequencies
         df = {}
-        for doc in documents:
-            words = set(doc.lower().split())
+        for tokens in tokenized:
+            words = set(tokens)
             for word in words:
                 df[word] = df.get(word, 0) + 1
         
@@ -47,10 +67,10 @@ class BM25Retriever:
         """Calculate BM25 score for a query-document pair."""
         score = 0.0
         doc = self.docs[doc_id]
-        doc_words = doc.lower().split()
+        doc_words = tokenize(doc)
         doc_len = self.doc_len[doc_id]
         
-        query_words = query.lower().split()
+        query_words = tokenize(query)
         word_freqs = Counter(doc_words)
         
         for word in query_words:
@@ -166,37 +186,16 @@ class QueryExpander:
     """Expand queries with synonyms and related terms."""
     
     def __init__(self):
-        # Domain-specific synonym dictionary
-        self.synonyms = {
-            'deadline': ['due date', 'submission date', 'last date', 'final date'],
-            'extension': ['extra time', 'additional time', 'more time'],
-            'submit': ['upload', 'turn in', 'hand in', 'provide'],
-            'required': ['mandatory', 'must', 'necessary', 'needed'],
-            'allowed': ['permitted', 'acceptable', 'can', 'may'],
-            'prohibited': ['not allowed', 'forbidden', 'cannot', 'banned'],
-        }
+        pass
     
     def expand(self, query: str) -> List[str]:
         """Generate query variations."""
-        variations = [query]
-        query_lower = query.lower()
-        
-        for word, syns in self.synonyms.items():
-            if word in query_lower:
-                for syn in syns:
-                    expanded = query_lower.replace(word, syn)
-                    variations.append(expanded)
-        
-        return variations
+        return [query]
     
     def extract_keywords(self, query: str) -> List[str]:
         """Extract important keywords from query."""
-        # Simple keyword extraction (remove common words)
-        stopwords = {'the', 'is', 'are', 'was', 'a', 'an', 'what', 'when', 'where', 
-                     'who', 'how', 'can', 'will', 'be', 'for', 'to', 'of', 'in'}
-        
-        words = query.lower().split()
-        keywords = [w for w in words if w not in stopwords and len(w) > 2]
+        words = tokenize(query)
+        keywords = [w for w in words if len(w) > 2]
         
         return keywords
 

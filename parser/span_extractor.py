@@ -36,6 +36,7 @@ class SpanExtractor:
         # Patterns for important phrases
         self.important_patterns = [
             r'\b(?:deadline|due date|submission|extension)\b[^.;]*',
+            r'\b(?:submission format|file structure|zip file|compressed|compression)\b[^.;]*',
             r'\b(?:not|no|never|cannot|must not|shall not)\b[^.;]*',
             r'\b(?:if|unless|except|only if|provided that)\b[^.;]*',
             r'\b(?:must|shall|should|required|mandatory)\b[^.;]*',

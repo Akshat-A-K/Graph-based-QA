@@ -18,6 +18,7 @@ from parser.span_extractor import SpanExtractor
 from parser.span_graph import SpanGraph
 from parser.kg_builder import KnowledgeGraphBuilder
 from parser.enhanced_reasoner import EnhancedHybridReasoner
+from parser.advanced_retrieval import normalize_text, tokenize
 
 
 # Page config
@@ -93,7 +94,9 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         reasoner = EnhancedHybridReasoner(
             sentence_graph=drg.graph,
             span_graph=span_graph_builder.graph,
-            knowledge_graph=kg_data  # Pass the dict with entities/relations/graph
+            knowledge_graph=kg_data,
+            model_name="sentence-transformers/LaBSE",
+            use_cross_encoder=True
         )
         
         return {
@@ -111,27 +114,45 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         os.unlink(tmp_path)
 
 
-def extract_answer_text(results, span_graph, max_length=300):
-    """Extract readable answer from results with improved formatting"""
+def extract_answer_text(results, span_graph, query, reasoner=None, max_length=300):
+    """
+    Extract readable answer from results with improved formatting and validation.
+    Includes confidence calculation and answer validation against evidence.
+    """
     import re
     
     final_spans = results.get('final_spans', [])
     
     if not final_spans:
-        return "No answer found", []
+        return "No answer found", [], 0.0, "Low ✗"
     
-    # Get text from top spans
+    query_tokens = set(tokenize(query))
+    time_tokens = {"when", "deadline", "due", "date", "time", "antim", "aakhri", "tarikh", "tithi"}
+    is_time_query = bool(query_tokens & time_tokens)
+
+    # Get text from top spans with lightweight scoring
     answers = []
-    for span_id in final_spans[:5]:
+    scored_answers = []
+    for span_id in final_spans[:8]:
         if span_id in span_graph.graph.nodes:
             text = span_graph.graph.nodes[span_id]['text'].strip()
+            text_tokens = set(tokenize(text))
+            overlap = len(query_tokens & text_tokens)
+            overlap_bonus = min(0.2, 0.04 * overlap)
+            temporal_bonus = 0.15 if is_time_query and any(tok in normalize_text(text) for tok in ["deadline", "due", "date", "time"]) else 0.0
+            score = overlap_bonus + temporal_bonus + (0.05 if len(text) > 40 else 0.0)
+            scored_answers.append((text, score))
             answers.append(text)
     
     if not answers:
-        return "No answer found", []
+        return "No answer found", [], 0.0, "Low ✗"
     
     # Try to find the best answer
-    best_answer = answers[0]
+    if scored_answers:
+        scored_answers.sort(key=lambda x: x[1], reverse=True)
+        best_answer = scored_answers[0][0]
+    else:
+        best_answer = answers[0]
     
     # If answer is very short, try to combine with context
     if len(best_answer.strip()) < 50 and len(answers) > 1:
@@ -142,6 +163,12 @@ def extract_answer_text(results, span_graph, max_length=300):
     
     # Clean up answer
     best_answer = re.sub(r'\s+', ' ', best_answer).strip()
+    
+    # Validate answer against evidence
+    if reasoner:
+        is_valid, coverage = reasoner.verify_answer_support(best_answer, answers)
+    else:
+        is_valid, coverage = True, 0.7  # Default if reasoner not available
     
     # Truncate if too long
     if len(best_answer) > max_length:
@@ -154,7 +181,11 @@ def extract_answer_text(results, span_graph, max_length=300):
         else:
             best_answer = best_answer.rsplit(' ', 1)[0] + '...'
     
-    return best_answer, answers
+    # Get confidence from results
+    confidence = results.get('confidence', 0.5)
+    confidence_label = results.get('confidence_label', 'Medium ◐')
+    
+    return best_answer, answers, confidence, confidence_label
 
 
 # Sidebar - PDF Upload
@@ -202,31 +233,10 @@ if st.session_state.graphs:
     with col1:
         st.header("❓ Ask a Question")
         
-        # Sample questions
-        st.markdown("**Quick Questions:**")
-        col_q1, col_q2, col_q3 = st.columns(3)
-        
-        sample_questions = [
-            "What is the deadline?",
-            "What are the requirements?",
-            "How many marks?"
-        ]
-        
-        selected_question = None
-        with col_q1:
-            if st.button("🕐 Deadline", use_container_width=True):
-                selected_question = sample_questions[0]
-        with col_q2:
-            if st.button("📋 Requirements", use_container_width=True):
-                selected_question = sample_questions[1]
-        with col_q3:
-            if st.button("💯 Marks", use_container_width=True):
-                selected_question = sample_questions[2]
-        
         # Main question input
         question = st.text_input(
-            "Or type your own question:",
-            value=selected_question if selected_question else "",
+            "Type your own question:",
+            value="",
             placeholder="e.g., What is the deadline? / Antim tarikh kya hai? / Submission kab tak?",
             help="Ask in English, Hindi, or Hinglish!",
             key="question_input"
@@ -242,9 +252,11 @@ if st.session_state.graphs:
             # Display answer
             st.markdown("---")
             st.subheader("📌 Answer")
-            answer, answer_spans = extract_answer_text(
+            answer, answer_spans, confidence, confidence_label = extract_answer_text(
                 results,
-                st.session_state.graphs['span_graph']
+                st.session_state.graphs['span_graph'],
+                question,
+                reasoner=st.session_state.graphs['reasoner']
             )
             
             # Styled answer box with proper HTML escaping
@@ -256,12 +268,15 @@ if st.session_state.graphs:
             </div>
             """, unsafe_allow_html=True)
             
-            # Show confidence metrics
-            col_conf1, col_conf2 = st.columns(2)
+            # Show confidence & evidence metrics
+            col_conf1, col_conf2, col_conf3 = st.columns(3)
             with col_conf1:
+                confidence_pct = int(confidence * 100)
+                st.metric("Confidence", f"{confidence_pct}%", confidence_label, help="Answer confidence based on evidence quality")
+            with col_conf2:
                 num_evidence = len(answer_spans)
                 st.metric("Evidence Spans", num_evidence, help="Number of supporting spans found")
-            with col_conf2:
+            with col_conf3:
                 kg_ents = len(results.get('kg_entities', []))
                 st.metric("KG Entities", kg_ents, help="Knowledge graph entities used")
             
@@ -348,9 +363,7 @@ if st.session_state.graphs:
         - 🔄 Query expansion
         
         **🌍 Languages Supported:**
-        - ✅ English
-        - ✅ Hindi / Hinglish
-        - ✅ 50+ languages
+        - ✅ Hindi / Hinglish / English
         """)
 
 else:
