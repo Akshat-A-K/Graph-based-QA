@@ -75,10 +75,15 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         span_graph_builder.add_structural_edges()
         span_graph_builder.add_semantic_edges(threshold=0.7)
         span_graph_builder.add_discourse_edges()
+        span_graph_builder.compute_graph_metrics()
         
         # Build KG
         kg_builder = KnowledgeGraphBuilder()
         kg = kg_builder.build_kg(spans)
+        
+        # Export graphs for visualization
+        span_graph_builder.export_graph_json('graphs/span_graph.json')
+        kg_builder.export_graph_json('graphs/kg_graph.json')
         
         # Initialize reasoner
         reasoner = EnhancedHybridReasoner(
@@ -94,7 +99,8 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
             'pages': pages,
             'sentence_nodes': sentence_nodes,
             'spans': spans,
-            'kg': kg
+            'kg': kg,
+            'kg_builder': kg_builder
         }
     
     finally:
@@ -247,7 +253,11 @@ if st.session_state.graphs:
         
         st.markdown("### 🎯 System Features")
         st.markdown("""
-        **🔗 Graph Types:**
+        **� Graph Visualizations:**
+        - `graphs/span_graph.json`
+        - `graphs/kg_graph.json`
+        
+        **�🔗 Graph Types:**
         - 📊 Sentence-level DRG
         - 🔤 Span-level graph
         - 🧠 Knowledge graph

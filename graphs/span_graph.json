@@ -1,0 +1,1353 @@
+{
+  "nodes": [
+    {
+      "id": 0,
+      "text": "ASSIGNMENT DETAILS\nThis assignment is worth 25 marks.",
+      "type": "clause",
+      "page": 1,
+      "importance": 8,
+      "discourse": [],
+      "pagerank": 0.039049782469680494
+    },
+    {
+      "id": 1,
+      "text": "The submission deadline is March 15, 2025 at 11:59 PM.",
+      "type": "clause",
+      "page": 1,
+      "importance": 10,
+      "discourse": [
+        "temporal"
+      ],
+      "pagerank": 0.05265108719306762
+    },
+    {
+      "id": 2,
+      "text": "submission deadline is March 15, 2025 at 11:59 PM",
+      "type": "deadline",
+      "page": 1,
+      "importance": 9,
+      "discourse": [
+        "temporal"
+      ],
+      "pagerank": 0.051646518359432125
+    },
+    {
+      "id": 3,
+      "text": "11:59 PM",
+      "type": "phrase",
+      "page": 1,
+      "importance": 2,
+      "discourse": [],
+      "pagerank": 0.045899668952973885
+    },
+    {
+      "id": 4,
+      "text": "Students must submit the report by the deadline.",
+      "type": "clause",
+      "page": 1,
+      "importance": 8,
+      "discourse": [
+        "temporal",
+        "requirement"
+      ],
+      "pagerank": 0.05795423785345727
+    },
+    {
+      "id": 5,
+      "text": "deadline",
+      "type": "deadline",
+      "page": 1,
+      "importance": 1,
+      "discourse": [
+        "temporal"
+      ],
+      "pagerank": 0.05619232832807794
+    },
+    {
+      "id": 6,
+      "text": "must submit the report by the deadline",
+      "type": "requirement",
+      "page": 1,
+      "importance": 7,
+      "discourse": [
+        "temporal",
+        "requirement"
+      ],
+      "pagerank": 0.059399001479108884
+    },
+    {
+      "id": 7,
+      "text": "Late submissions will not be accepted except in medical emergencies.",
+      "type": "clause",
+      "page": 1,
+      "importance": 10,
+      "discourse": [
+        "exception",
+        "negation"
+      ],
+      "pagerank": 0.05464180596977994
+    },
+    {
+      "id": 8,
+      "text": "not be accepted except in medical emergencies",
+      "type": "condition",
+      "page": 1,
+      "importance": 7,
+      "discourse": [
+        "exception",
+        "negation"
+      ],
+      "pagerank": 0.060704974074607246
+    },
+    {
+      "id": 9,
+      "text": "except in medical emergencies",
+      "type": "condition",
+      "page": 1,
+      "importance": 4,
+      "discourse": [
+        "exception"
+      ],
+      "pagerank": 0.06980555456099102
+    },
+    {
+      "id": 10,
+      "text": "GRADING CRITERIA",
+      "type": "clause",
+      "page": 2,
+      "importance": 2,
+      "discourse": [],
+      "pagerank": 0.05964621670901593
+    },
+    {
+      "id": 11,
+      "text": "The report will be graded on three criteria.",
+      "type": "clause",
+      "page": 2,
+      "importance": 8,
+      "discourse": [],
+      "pagerank": 0.05219637504812587
+    },
+    {
+      "id": 12,
+      "text": "Quality of analysis accounts for 10 marks.",
+      "type": "clause",
+      "page": 2,
+      "importance": 7,
+      "discourse": [],
+      "pagerank": 0.04920446562293679
+    },
+    {
+      "id": 13,
+      "text": "creativity accounts for 10 marks.",
+      "type": "clause",
+      "page": 2,
+      "importance": 5,
+      "discourse": [],
+      "pagerank": 0.046410790904658925
+    },
+    {
+      "id": 14,
+      "text": "Presentation",
+      "type": "clause",
+      "page": 2,
+      "importance": 1,
+      "discourse": [],
+      "pagerank": 0.0550370418586003
+    },
+    {
+      "id": 15,
+      "text": "formatting accounts for 5 marks.",
+      "type": "clause",
+      "page": 2,
+      "importance": 5,
+      "discourse": [],
+      "pagerank": 0.04963631017743758
+    },
+    {
+      "id": 16,
+      "text": "If the submission is incomplete, a penalty of 50% will be applied.",
+      "type": "clause",
+      "page": 2,
+      "importance": 12,
+      "discourse": [
+        "condition"
+      ],
+      "pagerank": 0.04994039663768732
+    },
+    {
+      "id": 17,
+      "text": "submission is incomplete, a penalty of 50% will be applied",
+      "type": "deadline",
+      "page": 2,
+      "importance": 10,
+      "discourse": [],
+      "pagerank": 0.04411120852574242
+    },
+    {
+      "id": 18,
+      "text": "If the submission is incomplete, a penalty of 50% will be applied",
+      "type": "condition",
+      "page": 2,
+      "importance": 12,
+      "discourse": [
+        "condition"
+      ],
+      "pagerank": 0.045872235274618284
+    }
+  ],
+  "edges": [
+    {
+      "source": 0,
+      "target": 1,
+      "type": "sequential",
+      "weight": 0.9
+    },
+    {
+      "source": 0,
+      "target": 2,
+      "type": "proximity",
+      "weight": 0.5
+    },
+    {
+      "source": 0,
+      "target": 3,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 0,
+      "target": 4,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 0,
+      "target": 5,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 0,
+      "target": 6,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 0,
+      "target": 7,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 0,
+      "target": 8,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 0,
+      "target": 9,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 1,
+      "target": 0,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 1,
+      "target": 2,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 1,
+      "target": 3,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 1,
+      "target": 4,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 1,
+      "target": 5,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 1,
+      "target": 6,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 1,
+      "target": 7,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 1,
+      "target": 8,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 1,
+      "target": 9,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 2,
+      "target": 0,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 2,
+      "target": 1,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 2,
+      "target": 3,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 2,
+      "target": 4,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 2,
+      "target": 5,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 2,
+      "target": 6,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 2,
+      "target": 7,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 2,
+      "target": 8,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 2,
+      "target": 9,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 3,
+      "target": 0,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 3,
+      "target": 1,
+      "type": "proximity",
+      "weight": 0.5
+    },
+    {
+      "source": 3,
+      "target": 2,
+      "type": "same_sentence",
+      "weight": 1.0
+    },
+    {
+      "source": 3,
+      "target": 4,
+      "type": "sequential",
+      "weight": 0.9
+    },
+    {
+      "source": 3,
+      "target": 5,
+      "type": "proximity",
+      "weight": 0.5
+    },
+    {
+      "source": 3,
+      "target": 6,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 3,
+      "target": 7,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 3,
+      "target": 8,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 3,
+      "target": 9,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 4,
+      "target": 0,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 4,
+      "target": 1,
+      "type": "requirement",
+      "weight": 0.85
+    },
+    {
+      "source": 4,
+      "target": 2,
+      "type": "requirement",
+      "weight": 0.85
+    },
+    {
+      "source": 4,
+      "target": 3,
+      "type": "requirement",
+      "weight": 0.85
+    },
+    {
+      "source": 4,
+      "target": 5,
+      "type": "requirement",
+      "weight": 0.85
+    },
+    {
+      "source": 4,
+      "target": 6,
+      "type": "requirement",
+      "weight": 0.85
+    },
+    {
+      "source": 4,
+      "target": 7,
+      "type": "requirement",
+      "weight": 0.85
+    },
+    {
+      "source": 4,
+      "target": 8,
+      "type": "requirement",
+      "weight": 0.85
+    },
+    {
+      "source": 4,
+      "target": 9,
+      "type": "requirement",
+      "weight": 0.85
+    },
+    {
+      "source": 5,
+      "target": 0,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 5,
+      "target": 1,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 5,
+      "target": 2,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 5,
+      "target": 3,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 5,
+      "target": 4,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 5,
+      "target": 6,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 5,
+      "target": 7,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 5,
+      "target": 8,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 5,
+      "target": 9,
+      "type": "temporal",
+      "weight": 0.85
+    },
+    {
+      "source": 5,
+      "target": 10,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 6,
+      "target": 0,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 6,
+      "target": 1,
+      "type": "requirement",
+      "weight": 0.85
+    },
+    {
+      "source": 6,
+      "target": 2,
+      "type": "requirement",
+      "weight": 0.85
+    },
+    {
+      "source": 6,
+      "target": 3,
+      "type": "requirement",
+      "weight": 0.85
+    },
+    {
+      "source": 6,
+      "target": 4,
+      "type": "requirement",
+      "weight": 0.85
+    },
+    {
+      "source": 6,
+      "target": 5,
+      "type": "requirement",
+      "weight": 0.85
+    },
+    {
+      "source": 6,
+      "target": 7,
+      "type": "requirement",
+      "weight": 0.85
+    },
+    {
+      "source": 6,
+      "target": 8,
+      "type": "requirement",
+      "weight": 0.85
+    },
+    {
+      "source": 6,
+      "target": 9,
+      "type": "requirement",
+      "weight": 0.85
+    },
+    {
+      "source": 6,
+      "target": 10,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 6,
+      "target": 11,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 7,
+      "target": 0,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 7,
+      "target": 1,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 7,
+      "target": 2,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 7,
+      "target": 3,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 7,
+      "target": 4,
+      "type": "negation",
+      "weight": 0.85
+    },
+    {
+      "source": 7,
+      "target": 5,
+      "type": "negation",
+      "weight": 0.85
+    },
+    {
+      "source": 7,
+      "target": 6,
+      "type": "negation",
+      "weight": 0.85
+    },
+    {
+      "source": 7,
+      "target": 8,
+      "type": "negation",
+      "weight": 0.85
+    },
+    {
+      "source": 7,
+      "target": 9,
+      "type": "negation",
+      "weight": 0.85
+    },
+    {
+      "source": 7,
+      "target": 10,
+      "type": "negation",
+      "weight": 0.85
+    },
+    {
+      "source": 7,
+      "target": 11,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 7,
+      "target": 12,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 8,
+      "target": 0,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 8,
+      "target": 1,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 8,
+      "target": 2,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 8,
+      "target": 3,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 8,
+      "target": 4,
+      "type": "negation",
+      "weight": 0.85
+    },
+    {
+      "source": 8,
+      "target": 5,
+      "type": "negation",
+      "weight": 0.85
+    },
+    {
+      "source": 8,
+      "target": 6,
+      "type": "negation",
+      "weight": 0.85
+    },
+    {
+      "source": 8,
+      "target": 7,
+      "type": "negation",
+      "weight": 0.85
+    },
+    {
+      "source": 8,
+      "target": 9,
+      "type": "negation",
+      "weight": 0.85
+    },
+    {
+      "source": 8,
+      "target": 10,
+      "type": "negation",
+      "weight": 0.85
+    },
+    {
+      "source": 8,
+      "target": 11,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 8,
+      "target": 12,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 8,
+      "target": 13,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 9,
+      "target": 0,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 9,
+      "target": 1,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 9,
+      "target": 2,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 9,
+      "target": 3,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 9,
+      "target": 4,
+      "type": "exception",
+      "weight": 0.85
+    },
+    {
+      "source": 9,
+      "target": 5,
+      "type": "exception",
+      "weight": 0.85
+    },
+    {
+      "source": 9,
+      "target": 6,
+      "type": "exception",
+      "weight": 0.85
+    },
+    {
+      "source": 9,
+      "target": 7,
+      "type": "exception",
+      "weight": 0.85
+    },
+    {
+      "source": 9,
+      "target": 8,
+      "type": "exception",
+      "weight": 0.85
+    },
+    {
+      "source": 9,
+      "target": 10,
+      "type": "exception",
+      "weight": 0.85
+    },
+    {
+      "source": 9,
+      "target": 11,
+      "type": "proximity",
+      "weight": 0.5
+    },
+    {
+      "source": 9,
+      "target": 12,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 9,
+      "target": 13,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 9,
+      "target": 14,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 10,
+      "target": 5,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 10,
+      "target": 6,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 10,
+      "target": 7,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 10,
+      "target": 8,
+      "type": "proximity",
+      "weight": 0.5
+    },
+    {
+      "source": 10,
+      "target": 9,
+      "type": "backward",
+      "weight": 0.7
+    },
+    {
+      "source": 10,
+      "target": 11,
+      "type": "sequential",
+      "weight": 0.9
+    },
+    {
+      "source": 10,
+      "target": 12,
+      "type": "proximity",
+      "weight": 0.5
+    },
+    {
+      "source": 10,
+      "target": 13,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 10,
+      "target": 14,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 10,
+      "target": 15,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 10,
+      "target": 16,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 10,
+      "target": 17,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 10,
+      "target": 18,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 11,
+      "target": 6,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 11,
+      "target": 7,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 11,
+      "target": 8,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 11,
+      "target": 9,
+      "type": "proximity",
+      "weight": 0.5
+    },
+    {
+      "source": 11,
+      "target": 10,
+      "type": "backward",
+      "weight": 0.7
+    },
+    {
+      "source": 11,
+      "target": 12,
+      "type": "sequential",
+      "weight": 0.9
+    },
+    {
+      "source": 11,
+      "target": 13,
+      "type": "proximity",
+      "weight": 0.5
+    },
+    {
+      "source": 11,
+      "target": 14,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 11,
+      "target": 15,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 11,
+      "target": 16,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 11,
+      "target": 17,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 11,
+      "target": 18,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 12,
+      "target": 7,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 12,
+      "target": 8,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 12,
+      "target": 9,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 12,
+      "target": 10,
+      "type": "proximity",
+      "weight": 0.5
+    },
+    {
+      "source": 12,
+      "target": 11,
+      "type": "backward",
+      "weight": 0.7
+    },
+    {
+      "source": 12,
+      "target": 13,
+      "type": "sequential",
+      "weight": 0.9
+    },
+    {
+      "source": 12,
+      "target": 14,
+      "type": "proximity",
+      "weight": 0.5
+    },
+    {
+      "source": 12,
+      "target": 15,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 12,
+      "target": 16,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 12,
+      "target": 17,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 12,
+      "target": 18,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 13,
+      "target": 8,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 13,
+      "target": 9,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 13,
+      "target": 10,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 13,
+      "target": 11,
+      "type": "proximity",
+      "weight": 0.5
+    },
+    {
+      "source": 13,
+      "target": 12,
+      "type": "backward",
+      "weight": 0.7
+    },
+    {
+      "source": 13,
+      "target": 14,
+      "type": "sequential",
+      "weight": 0.9
+    },
+    {
+      "source": 13,
+      "target": 15,
+      "type": "proximity",
+      "weight": 0.5
+    },
+    {
+      "source": 13,
+      "target": 16,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 13,
+      "target": 17,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 13,
+      "target": 18,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 14,
+      "target": 9,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 14,
+      "target": 10,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 14,
+      "target": 11,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 14,
+      "target": 12,
+      "type": "proximity",
+      "weight": 0.5
+    },
+    {
+      "source": 14,
+      "target": 13,
+      "type": "backward",
+      "weight": 0.7
+    },
+    {
+      "source": 14,
+      "target": 15,
+      "type": "same_sentence",
+      "weight": 1.0
+    },
+    {
+      "source": 14,
+      "target": 16,
+      "type": "proximity",
+      "weight": 0.5
+    },
+    {
+      "source": 14,
+      "target": 17,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 14,
+      "target": 18,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 15,
+      "target": 10,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 15,
+      "target": 11,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 15,
+      "target": 12,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 15,
+      "target": 13,
+      "type": "proximity",
+      "weight": 0.5
+    },
+    {
+      "source": 15,
+      "target": 14,
+      "type": "same_sentence",
+      "weight": 1.0
+    },
+    {
+      "source": 15,
+      "target": 16,
+      "type": "sequential",
+      "weight": 0.9
+    },
+    {
+      "source": 15,
+      "target": 17,
+      "type": "proximity",
+      "weight": 0.5
+    },
+    {
+      "source": 15,
+      "target": 18,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 16,
+      "target": 10,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 16,
+      "target": 11,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 16,
+      "target": 12,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 16,
+      "target": 13,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 16,
+      "target": 14,
+      "type": "condition",
+      "weight": 0.85
+    },
+    {
+      "source": 16,
+      "target": 15,
+      "type": "condition",
+      "weight": 0.85
+    },
+    {
+      "source": 16,
+      "target": 17,
+      "type": "condition",
+      "weight": 0.85
+    },
+    {
+      "source": 16,
+      "target": 18,
+      "type": "condition",
+      "weight": 0.85
+    },
+    {
+      "source": 17,
+      "target": 10,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 17,
+      "target": 11,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 17,
+      "target": 12,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 17,
+      "target": 13,
+      "type": "proximity",
+      "weight": 0.25
+    },
+    {
+      "source": 17,
+      "target": 14,
+      "type": "proximity",
+      "weight": 0.3333333333333333
+    },
+    {
+      "source": 17,
+      "target": 15,
+      "type": "proximity",
+      "weight": 0.5
+    },
+    {
+      "source": 17,
+      "target": 16,
+      "type": "same_sentence",
+      "weight": 1.0
+    },
+    {
+      "source": 17,
+      "target": 18,
+      "type": "same_sentence",
+      "weight": 1.0
+    },
+    {
+      "source": 18,
+      "target": 10,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 18,
+      "target": 11,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 18,
+      "target": 12,
+      "type": "same_section",
+      "weight": 0.5
+    },
+    {
+      "source": 18,
+      "target": 13,
+      "type": "proximity",
+      "weight": 0.2
+    },
+    {
+      "source": 18,
+      "target": 14,
+      "type": "condition",
+      "weight": 0.85
+    },
+    {
+      "source": 18,
+      "target": 15,
+      "type": "condition",
+      "weight": 0.85
+    },
+    {
+      "source": 18,
+      "target": 16,
+      "type": "condition",
+      "weight": 0.85
+    },
+    {
+      "source": 18,
+      "target": 17,
+      "type": "condition",
+      "weight": 0.85
+    }
+  ]
+}

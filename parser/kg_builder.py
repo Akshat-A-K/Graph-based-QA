@@ -1,12 +1,14 @@
 """
-Knowledge Graph Builder: Extract entities and relations from document spans.
-Uses pattern matching and dependency parsing (no LLM required).
+Enhanced Knowledge Graph Builder
+Advanced entity recognition, relation extraction, and graph visualization export
 """
 
 import re
-from typing import List, Dict, Tuple, Set
+import json
+import networkx as nx
+from typing import List, Dict
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 
 @dataclass
@@ -32,51 +34,77 @@ class KnowledgeGraphBuilder:
     """Build a knowledge graph from document spans."""
     
     def __init__(self):
-        # Entity extraction patterns
+        print("🧠 Initializing Enhanced Knowledge Graph Builder...")
+        
+        # Enhanced entity extraction patterns with better coverage
         self.entity_patterns = {
             "DATE": [
                 r'\b\d{1,2}(?:st|nd|rd|th)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}',
                 r'\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}',
                 r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b',
+                r'\b\d{4}-\d{2}-\d{2}\b',  # ISO format
             ],
             "TIME": [
-                r'\b\d{1,2}:\d{2}\s*(?:am|pm|AM|PM|hours?)\b',
-                r'\b(?:23:59|11:59)\b',
+                r'\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm|AM|PM|hours?)?\b',
+                r'\b(?:23:59|11:59|00:00|noon|midnight)\b',
             ],
             "PERSON": [
-                r'\b(?:Dr\.|Prof\.|Mr\.|Ms\.|Mrs\.)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*',
-                r'\b[A-Z][a-z]+\s+[A-Z][a-z]+\b(?=\s+(?:said|wrote|mentioned|stated))',
+                r'\b(?:Dr\.|Prof\.|Mr\.|Ms\.|Mrs\.|Sir|Madam)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*',
+                r'\b[A-Z][a-z]+\s+[A-Z][a-z]+\b(?=\s+(?:said|wrote|mentioned|stated|proposed|suggested))',
             ],
             "ORG": [
-                r'\b(?:University|Department|Institute|Ministry|Committee|Board)\s+(?:of\s+)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*',
+                r'\b(?:University|Department|Institute|Ministry|Committee|Board|Company|Corporation|Agency)\s+(?:of\s+)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*',
+            ],
+            "SCORE": [  # NEW: Detect marks, grades, scores
+                r'\b\d+\s*(?:marks?|points?|credits?|grade|percentage|%)\b',
+                r'\b(?:grade|marks?)\s*:?\s*\d+',
+            ],
+            "PERCENTAGE": [
+                r'\b\d+(?:\.\d+)?\s*%',
+                r'\b\d+(?:\.\d+)?\s*percent',
+            ],
+            "NUMBER": [  # NEW: Generic numbers
+                r'\b\d+(?:,\d{3})*(?:\.\d+)?\b',
             ],
             "REQUIREMENT": [
-                r'\b(?:must|shall|required to|mandatory to|obligatory to)\s+[a-z\s]+(?=\.|\,|;)',
+                r'\b(?:must|shall|required to|mandatory to|obligatory to|need to|have to)\s+[a-z\s]+?(?=\.)',
             ],
             "CONSTRAINT": [
-                r'\b(?:not|no|never|cannot|must not|shall not|prohibited|forbidden)\s+[a-z\s]+(?=\.|\,|;)',
-                r'\b(?:except|unless|only if|provided that)\s+[a-z\s]+',
+                r'\b(?:not allowed|cannot|must not|shall not|prohibited|forbidden|banned)\s+[a-z\s]+?(?=\.)',
+                r'\b(?:except|unless|only if|provided that|on condition)\s+[a-z\s]+',
+            ],
+            "KEYWORD": [  # NEW: Domain-specific keywords
+                r'\b(?:assignment|submission|deadline|task|project|exam|test|quiz|lecture|tutorial)\b',
             ],
         }
         
-        # Relation patterns (trigger → relation type)
+        # Enhanced relation patterns
         self.relation_patterns = {
             "TEMPORAL": [
-                r'\b(?:before|after|until|by|deadline|due date|on)\b',
+                r'\b(?:before|after|until|by|deadline|due date|on|during|while|when)\b',
             ],
             "CONDITIONAL": [
-                r'\b(?:if|unless|provided that|only if|in case)\b',
+                r'\b(?:if|unless|provided that|only if|in case|assuming|given that)\b',
             ],
             "CAUSAL": [
-                r'\b(?:because|since|as|therefore|thus|hence|consequently)\b',
+                r'\b(?:because|since|as|therefore|thus|hence|consequently|results in|leads to|causes)\b',
             ],
             "RESTRICTION": [
-                r'\b(?:except|excluding|not including|but not|other than)\b',
+                r'\b(?:except|excluding|not including|but not|other than|without)\b',
             ],
             "REQUIREMENT": [
-                r'\b(?:must|shall|required|need to|have to)\b',
+                r'\b(?:must|shall|required|need to|have to|should|ought to)\b',
+            ],
+            "COMPOSITION": [  # NEW: Part-of relations
+                r'\b(?:consists of|contains|includes|comprises|made up of)\b',
+            ],
+            "EQUIVALENCE": [  # NEW: Is-a relations
+                r'\b(?:is|are|equals|means|refers to|defined as)\b',
             ],
         }
+        
+        # Graph for visualization
+        self.nx_graph = nx.DiGraph()
     
     def extract_entities(self, spans: List[Dict]) -> List[Entity]:
         """Extract entities from spans."""
@@ -198,13 +226,20 @@ class KnowledgeGraphBuilder:
     
     def build_kg(self, spans: List[Dict]) -> Dict:
         """
-        Build knowledge graph from spans.
+        Build enhanced knowledge graph from spans.
         
         Returns:
-            Dictionary with 'entities' and 'relations' keys
+            Dictionary with 'entities', 'relations', and 'graph' keys
         """
+        print("🔨 Building knowledge graph...")
+        
         entities = self.extract_entities(spans)
         relations = self.extract_relations(entities, spans)
+        
+        # Build NetworkX graph for visualization
+        self._build_nx_graph(entities, relations)
+        
+        print(f"✅ KG built: {len(entities)} entities, {len(relations)} relations")
         
         return {
             "entities": [
@@ -225,8 +260,64 @@ class KnowledgeGraphBuilder:
                     "confidence": r.confidence
                 }
                 for r in relations
+            ],
+            "graph": self.nx_graph  # Add NetworkX graph
+        }
+    
+    def _build_nx_graph(self, entities: List[Entity], relations: List[Relation]):
+        """Build NetworkX graph from entities and relations."""
+        # Add entity nodes
+        for entity in entities:
+            self.nx_graph.add_node(
+                entity.entity_id,
+                label=entity.text,
+                type=entity.entity_type,
+                span_ids=entity.span_ids
+            )
+        
+        # Add relation edges
+        for relation in relations:
+            self.nx_graph.add_edge(
+                relation.source_entity_id,
+                relation.target_entity_id,
+                relation=relation.relation_type,
+                confidence=relation.confidence
+            )
+    
+    def export_graph_json(self, output_path: str):
+        """Export knowledge graph to JSON for visualization."""
+        data = {
+            "nodes": [
+                {"id": n, **self.nx_graph.nodes[n]}
+                for n in self.nx_graph.nodes()
+            ],
+            "edges": [
+                {
+                    "source": u,
+                    "target": v,
+                    **self.nx_graph.edges[u, v]
+                }
+                for u, v in self.nx_graph.edges()
             ]
         }
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, default=str)
+        
+        print(f"✅ KG exported to {output_path}")
+    
+    def export_graph_graphml(self, output_path: str):
+        """Export knowledge graph to GraphML for Gephi/Cytoscape."""
+        # Create a copy without lists for GraphML export
+        export_graph = self.nx_graph.copy()
+        for node in export_graph.nodes():
+            if 'span_ids' in export_graph.nodes[node]:
+                # Convert list to string
+                span_ids = export_graph.nodes[node]['span_ids']
+                export_graph.nodes[node]['span_ids'] = ','.join(map(str, span_ids)) if span_ids else ''
+        
+        nx.write_graphml(export_graph, output_path)
+        print(f"✅ KG exported to {output_path}")
 
 
 def build_knowledge_graph(spans: List[Dict]) -> Dict:
