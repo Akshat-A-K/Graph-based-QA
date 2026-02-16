@@ -9,6 +9,9 @@ import networkx as nx
 from typing import List, Dict
 from collections import defaultdict
 from dataclasses import dataclass, asdict
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend
 
 
 @dataclass
@@ -318,6 +321,59 @@ class KnowledgeGraphBuilder:
         
         nx.write_graphml(export_graph, output_path)
         print(f"✅ KG exported to {output_path}")
+    
+    def export_graph_image(self, output_path: str, figsize=(12, 10)):
+        """Export knowledge graph as image visualization."""
+        if self.nx_graph.number_of_nodes() == 0:
+            print("⚠️  No entities to visualize")
+            return
+        
+        plt.figure(figsize=figsize)
+        
+        # Use hierarchical layout
+        pos = nx.spring_layout(self.nx_graph, k=2, iterations=50)
+        
+        # Color nodes by entity type
+        entity_type_colors = {
+            'DATE': 'lightcoral',
+            'TIME': 'lightgreen',
+            'PERSON': 'lightblue',
+            'ORG': 'lightyellow',
+            'SCORE': 'gold',
+            'PERCENTAGE': 'orange',
+            'NUMBER': 'lightgray',
+            'KEYWORD': 'pink',
+            'REQUIREMENT': 'red',
+            'CONSTRAINT': 'darkred',
+        }
+        
+        node_colors = [entity_type_colors.get(self.nx_graph.nodes[n].get('type', ''), 'white') 
+                       for n in self.nx_graph.nodes()]
+        
+        # Draw nodes
+        nx.draw_networkx_nodes(self.nx_graph, pos, node_color=node_colors,
+                               node_size=800, alpha=0.8)
+        
+        # Draw edges with relation labels (no arrows for faster rendering)
+        nx.draw_networkx_edges(self.nx_graph, pos, alpha=0.4, arrows=False,
+                               width=2)
+        
+        # Draw labels
+        labels = {n: self.nx_graph.nodes[n].get('label', str(n))[:15] 
+                  for n in self.nx_graph.nodes()}
+        nx.draw_networkx_labels(self.nx_graph, pos, labels, font_size=8)
+        
+        # Draw edge labels
+        edge_labels = {(u, v): self.nx_graph.edges[u, v].get('relation', '')[:10]
+                       for u, v in self.nx_graph.edges()}
+        nx.draw_networkx_edge_labels(self.nx_graph, pos, edge_labels, font_size=6)
+        
+        plt.title("Knowledge Graph (Entities & Relations)", fontsize=14, fontweight='bold')
+        plt.axis('off')
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        plt.close()
+        print(f"✅ KG image saved to {output_path}")
 
 
 def build_knowledge_graph(spans: List[Dict]) -> Dict:

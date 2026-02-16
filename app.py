@@ -79,17 +79,21 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         
         # Build KG
         kg_builder = KnowledgeGraphBuilder()
-        kg = kg_builder.build_kg(spans)
+        kg_data = kg_builder.build_kg(spans)
         
         # Export graphs for visualization
+        os.makedirs('graphs', exist_ok=True)
         span_graph_builder.export_graph_json('graphs/span_graph.json')
+        span_graph_builder.export_graph_image('graphs/span_graph.png')
         kg_builder.export_graph_json('graphs/kg_graph.json')
+        kg_builder.export_graph_image('graphs/kg_graph.png')
+        drg.export_graph_image('graphs/drg_graph.png')
         
         # Initialize reasoner
         reasoner = EnhancedHybridReasoner(
             sentence_graph=drg.graph,
             span_graph=span_graph_builder.graph,
-            knowledge_graph=kg
+            knowledge_graph=kg_data  # Pass the dict with entities/relations/graph
         )
         
         return {
@@ -99,7 +103,7 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
             'pages': pages,
             'sentence_nodes': sentence_nodes,
             'spans': spans,
-            'kg': kg,
+            'kg': kg_data,  # Return the complete kg data
             'kg_builder': kg_builder
         }
     
@@ -107,8 +111,10 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         os.unlink(tmp_path)
 
 
-def extract_answer_text(results, span_graph, max_length=200):
-    """Extract readable answer from results"""
+def extract_answer_text(results, span_graph, max_length=300):
+    """Extract readable answer from results with improved formatting"""
+    import re
+    
     final_spans = results.get('final_spans', [])
     
     if not final_spans:
@@ -116,15 +122,39 @@ def extract_answer_text(results, span_graph, max_length=200):
     
     # Get text from top spans
     answers = []
-    for span_id in final_spans[:3]:
+    for span_id in final_spans[:5]:
         if span_id in span_graph.graph.nodes:
-            text = span_graph.graph.nodes[span_id]['text']
+            text = span_graph.graph.nodes[span_id]['text'].strip()
             answers.append(text)
     
-    if answers:
-        return answers[0][:max_length], answers
+    if not answers:
+        return "No answer found", []
     
-    return "No answer found", []
+    # Try to find the best answer
+    best_answer = answers[0]
+    
+    # If answer is very short, try to combine with context
+    if len(best_answer.strip()) < 50 and len(answers) > 1:
+        # Concatenate first 2-3 short answers for better context
+        combined = ' '.join(answers[:2])
+        if len(combined) < max_length:
+            best_answer = combined
+    
+    # Clean up answer
+    best_answer = re.sub(r'\s+', ' ', best_answer).strip()
+    
+    # Truncate if too long
+    if len(best_answer) > max_length:
+        # Try to end at a sentence boundary
+        best_answer = best_answer[:max_length]
+        # Find last sentence end
+        last_period = max(best_answer.rfind('.'), best_answer.rfind('।'))
+        if last_period > max_length * 0.6:
+            best_answer = best_answer[:last_period + 1]
+        else:
+            best_answer = best_answer.rsplit(' ', 1)[0] + '...'
+    
+    return best_answer, answers
 
 
 # Sidebar - PDF Upload
@@ -171,10 +201,35 @@ if st.session_state.graphs:
     
     with col1:
         st.header("❓ Ask a Question")
+        
+        # Sample questions
+        st.markdown("**Quick Questions:**")
+        col_q1, col_q2, col_q3 = st.columns(3)
+        
+        sample_questions = [
+            "What is the deadline?",
+            "What are the requirements?",
+            "How many marks?"
+        ]
+        
+        selected_question = None
+        with col_q1:
+            if st.button("🕐 Deadline", use_container_width=True):
+                selected_question = sample_questions[0]
+        with col_q2:
+            if st.button("📋 Requirements", use_container_width=True):
+                selected_question = sample_questions[1]
+        with col_q3:
+            if st.button("💯 Marks", use_container_width=True):
+                selected_question = sample_questions[2]
+        
+        # Main question input
         question = st.text_input(
-            "Enter your question about the document:",
-            placeholder="e.g., What is the deadline? / Marks kya hain isme? / When should I submit?",
-            help="Ask in English, Hindi, or Hinglish!"
+            "Or type your own question:",
+            value=selected_question if selected_question else "",
+            placeholder="e.g., What is the deadline? / Antim tarikh kya hai? / Submission kab tak?",
+            help="Ask in English, Hindi, or Hinglish!",
+            key="question_input"
         )
         
         if question:
@@ -192,21 +247,32 @@ if st.session_state.graphs:
                 st.session_state.graphs['span_graph']
             )
             
-            # Styled answer box
+            # Styled answer box with proper HTML escaping
+            answer_clean = answer.replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')
+            
             st.markdown(f"""
             <div style='background-color: #1e3a1e; padding: 1.5rem; border-radius: 0.5rem; border-left: 5px solid #4CAF50;'>
-                <h3 style='color: #4CAF50; margin-top: 0;'>✅ {answer}</h3>
+                <p style='color: #e0e0e0; font-size: 1.1rem; line-height: 1.6; margin: 0;'>{answer_clean}</p>
             </div>
             """, unsafe_allow_html=True)
+            
+            # Show confidence metrics
+            col_conf1, col_conf2 = st.columns(2)
+            with col_conf1:
+                num_evidence = len(answer_spans)
+                st.metric("Evidence Spans", num_evidence, help="Number of supporting spans found")
+            with col_conf2:
+                kg_ents = len(results.get('kg_entities', []))
+                st.metric("KG Entities", kg_ents, help="Knowledge graph entities used")
             
             # Evidence
             st.markdown("")
             st.subheader("📋 Evidence Spans")
             if len(answer_spans) > 1:
                 st.caption(f"Found {len(answer_spans)} supporting evidence spans")
-            for i, span_text in enumerate(answer_spans, 1):
+            for i, span_text in enumerate(answer_spans[:5], 1):  # Limit to top 5
                 with st.expander(f"📄 Evidence {i}", expanded=(i==1)):
-                    st.markdown(f"*{span_text}*")
+                    st.markdown(f"```\n{span_text}\n```")
             
             # Breakdown
             st.markdown("")
@@ -225,10 +291,22 @@ if st.session_state.graphs:
                 
                 with col_b:
                     st.markdown("**🧠 Knowledge Graph**")
-                    kg_entities = results.get('kg_entities', [])
-                    st.metric("Entities Found", len(kg_entities), help="Named entities used in reasoning")
-                    if kg_entities:
-                        st.caption("Entities: " + ", ".join(kg_entities[:5]))
+                    kg_entity_ids = results.get('kg_entities', [])
+                    st.metric("Entities Found", len(kg_entity_ids), help="Named entities used in reasoning")
+                    
+                    # Get actual entity text from KG
+                    if kg_entity_ids and st.session_state.graphs.get('kg'):
+                        kg = st.session_state.graphs['kg']
+                        entity_texts = []
+                        for eid in kg_entity_ids[:5]:
+                            for entity in kg['entities']:
+                                if entity['entity_id'] == eid:
+                                    entity_texts.append(f"{entity['text']} ({entity['entity_type']})")
+                                    break
+                        if entity_texts:
+                            st.caption("**Entities used:**")
+                            for et in entity_texts:
+                                st.caption(f"• {et}")
     
     with col2:
         st.header("📊 Document Stats")
@@ -254,8 +332,9 @@ if st.session_state.graphs:
         st.markdown("### 🎯 System Features")
         st.markdown("""
         **� Graph Visualizations:**
-        - `graphs/span_graph.json`
-        - `graphs/kg_graph.json`
+        - `graphs/drg_graph.png`
+        - `graphs/span_graph.png`  
+        - `graphs/kg_graph.png`
         
         **�🔗 Graph Types:**
         - 📊 Sentence-level DRG

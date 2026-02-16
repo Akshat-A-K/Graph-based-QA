@@ -1,18 +1,33 @@
-import spacy
+import re
 from typing import List
 
-# Load spaCy English model
+# Try to load spaCy model
 try:
+    import spacy
     nlp = spacy.load("en_core_web_sm")
-except OSError:
-    print("Downloading spaCy model...")
-    import subprocess
-    subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"], check=True)
-    nlp = spacy.load("en_core_web_sm")
+    SPACY_AVAILABLE = True
+except (OSError, ImportError, Exception):
+    SPACY_AVAILABLE = False
+    nlp = None
 
 
 def split_into_sentences(text: str) -> List[str]:
-    """Split text into sentences using spaCy NLP."""
-    doc = nlp(text)
-    sentences = [sent.text.strip() for sent in doc.sents if len(sent.text.strip()) > 3]
+    """Split text into sentences using spaCy (with regex fallback)."""
+    
+    try:
+        # Try spaCy first (better sentence boundary detection)
+        if SPACY_AVAILABLE and nlp is not None:
+            doc = nlp(text)
+            sentences = [sent.text.strip() for sent in doc.sents if len(sent.text.strip()) > 3]
+            return sentences
+    except Exception:
+        pass
+    
+    # Fallback: Regex-based sentence splitting (Python 3.14 compatible)
+    # Split on periods, question marks, exclamation marks followed by space/newline
+    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
+    
+    # Filter out very short sentences
+    sentences = [sent.strip() for sent in sentences if len(sent.strip()) > 3]
+    
     return sentences

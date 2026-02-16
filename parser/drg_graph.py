@@ -6,6 +6,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
 from collections import Counter, defaultdict
 import re
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend
 
 
 class DocumentReasoningGraph:
@@ -211,6 +214,46 @@ class DocumentReasoningGraph:
         # Degree centrality
         for node_id in self.graph.nodes:
             self.graph.nodes[node_id]['degree'] = self.graph.degree(node_id)
+    
+    def export_graph_image(self, output_path: str, figsize=(12, 10)):
+        """Export DRG graph as image visualization."""
+        plt.figure(figsize=figsize)
+        
+        # Use spring layout for better visualization
+        pos = nx.spring_layout(self.graph, k=2, iterations=50)
+        
+        # Draw nodes with importance-based sizing
+        node_sizes = [self.graph.nodes[n].get('importance', 1) * 300 for n in self.graph.nodes()]
+        nx.draw_networkx_nodes(self.graph, pos, node_size=node_sizes, 
+                               node_color='lightblue', alpha=0.7)
+        
+        # Draw edges with type-based colors (no arrows for large graphs)
+        edge_colors = []
+        for u, v, data in self.graph.edges(data=True):
+            edge_type = data.get('type', 'unknown')
+            if edge_type == 'semantic':
+                edge_colors.append('red')
+            elif edge_type == 'entity':
+                edge_colors.append('green')
+            elif edge_type == 'adjacent':
+                edge_colors.append('blue')
+            else:
+                edge_colors.append('gray')
+        
+        nx.draw_networkx_edges(self.graph, pos, edge_color=edge_colors, 
+                               alpha=0.3, arrows=False)
+        
+        # Draw labels (truncated text)
+        labels = {n: f"{n}\n{self.graph.nodes[n]['text'][:20]}..." 
+                  for n in self.graph.nodes()}
+        nx.draw_networkx_labels(self.graph, pos, labels, font_size=6)
+        
+        plt.title("Document Reasoning Graph (DRG)", fontsize=14, fontweight='bold')
+        plt.axis('off')
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        plt.close()
+        print(f"✅ DRG image saved to {output_path}")
     
     # -------------------------
     # BUILD FULL GRAPH

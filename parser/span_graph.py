@@ -11,6 +11,9 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from collections import Counter, defaultdict
 from typing import List, Dict
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend
 
 
 class SpanGraph:
@@ -242,6 +245,45 @@ class SpanGraph:
         
         nx.write_graphml(export_graph, output_path)
         print(f"✅ Span graph exported to {output_path}")
+    
+    def export_graph_image(self, output_path: str, figsize=(14, 12)):
+        """Export span graph as image visualization."""
+        plt.figure(figsize=figsize)
+        
+        # Use spring layout with fewer iterations for speed
+        pos = nx.spring_layout(self.graph, k=1.5, iterations=20)
+        
+        # Color nodes by discourse type
+        node_colors = []
+        for n in self.graph.nodes():
+            discourse = self.graph.nodes[n].get('discourse_types', [])
+            if 'requirement' in discourse:
+                node_colors.append('red')
+            elif 'condition' in discourse:
+                node_colors.append('orange')
+            elif 'temporal' in discourse:
+                node_colors.append('green')
+            else:
+                node_colors.append('lightblue')
+        
+        # Draw nodes
+        node_sizes = [self.graph.nodes[n].get('importance', 5) * 50 for n in self.graph.nodes()]
+        nx.draw_networkx_nodes(self.graph, pos, node_color=node_colors,
+                               node_size=node_sizes, alpha=0.7)
+        
+        # Draw edges (no arrows for large graphs)
+        nx.draw_networkx_edges(self.graph, pos, alpha=0.15, arrows=False, width=0.3)
+        
+        # Draw labels
+        labels = {n: f"{n}" for n in self.graph.nodes()}
+        nx.draw_networkx_labels(self.graph, pos, labels, font_size=7)
+        
+        plt.title("Span Graph (Discourse-Aware)", fontsize=14, fontweight='bold')
+        plt.axis('off')
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        plt.close()
+        print(f"✅ Span graph image saved to {output_path}")
     
     def build_graph(self, spans: List[Dict]):
         """Build complete enhanced span graph."""

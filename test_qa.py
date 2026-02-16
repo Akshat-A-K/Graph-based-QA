@@ -1,182 +1,135 @@
 """
-QA System Test - Evaluate on SQuAD samples with proper F1/EM scoring
+Simple QA Test - Test graph building and visualization with sample PDF
 """
 
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 import sys
-import csv
-import numpy as np
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from parser.pdf_parser import extract_pages
 from parser.drg_nodes import build_nodes
 from parser.drg_graph import DocumentReasoningGraph
 from parser.span_extractor import SpanExtractor
 from parser.span_graph import SpanGraph
 from parser.kg_builder import KnowledgeGraphBuilder
 from parser.enhanced_reasoner import EnhancedHybridReasoner
-from parser.evaluator import QAEvaluator
 
 
-def load_samples(csv_path: str, limit: int = 10):
-    """Load QA samples from CSV"""
-    samples = []
-    with open(csv_path, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for i, row in enumerate(reader):
-            if i >= limit:
-                break
-            samples.append({
-                'question': row['question'],
-                'context': row['context'],
-                'answer': row['answer_text'],
-            })
-    return samples
-
-
-def find_answer_in_spans(question: str, answer: str, span_graph, retrieved_spans: list) -> str:
-    """Find best answer span that matches ground truth"""
-    best_match = ""
-    best_score = 0
-    
-    # Check if answer appears in any retrieved span
-    for span_id in retrieved_spans:
-        if span_id not in span_graph.nodes:
-            continue
-        
-        span_text = span_graph.nodes[span_id]['text'].lower()
-        answer_lower = answer.lower()
-        
-        # Direct match
-        if answer_lower in span_text:
-            return answer  # Perfect match
-        
-        # Partial match (at least one key word)
-        answer_words = answer_lower.split()
-        matched_words = sum(1 for w in answer_words if w in span_text)
-        score = matched_words / len(answer_words) if answer_words else 0
-        
-        if score > best_score:
-            best_score = score
-            best_match = span_text
-    
-    return best_match if best_match else answer
-
-
-def run_benchmark(csv_path: str, num_samples: int = 10):
-    """Run QA benchmark"""
+def test_qa_system(pdf_path, questions):
+    """Test the complete QA pipeline with graph visualization"""
     print("="*70)
-    print("GRAPH-BASED QA - SQuAD BENCHMARK")
+    print("QA SYSTEM TEST")
     print("="*70)
+    print(f"\nPDF: {pdf_path}")
     
-    # Load samples
-    print(f"\nLoading {num_samples} samples from {csv_path.split(chr(92))[-1]}...")
-    samples = load_samples(csv_path, limit=num_samples)
-    print(f"✓ Loaded {len(samples)} samples\n")
+    # 1. Extract text from PDF
+    print("\n[1/6] Extracting text from PDF...")
+    pages = extract_pages(pdf_path)
+    if not pages:
+        print("❌ Failed to extract text")
+        return
+    print(f"✓ Extracted {len(pages)} pages")
     
-    evaluator = QAEvaluator()
-    scores_list = []
+    # 2. Build sentence nodes
+    print("\n[2/6] Building sentence nodes...")
+    sentence_nodes = build_nodes(pages)
+    print(f"✓ Created {len(sentence_nodes)} sentence nodes")
     
-    # Process each sample
-    for idx, sample in enumerate(samples, 1):
-        context = sample['context']
-        question = sample['question']
-        ground_truth = sample['answer']
+    # 3. Build Document Reasoning Graph (DRG)
+    print("\n[3/6] Building Document Reasoning Graph...")
+    drg = DocumentReasoningGraph()
+    drg.add_nodes(sentence_nodes)
+    drg.compute_embeddings()
+    drg.add_structural_edges()
+    drg.add_semantic_edges(threshold=0.75)
+    print(f"✓ DRG: {drg.graph.number_of_nodes()} nodes, {drg.graph.number_of_edges()} edges")
+    
+    # Export DRG visualization
+    os.makedirs('graphs', exist_ok=True)
+    drg.export_graph_image('graphs/drg_graph.png')
+    print(f"✓ Saved: graphs/drg_graph.png")
+    
+    # 4. Build Span Graph
+    print("\n[4/6] Building Span Graph...")
+    span_extractor = SpanExtractor()
+    spans = span_extractor.extract_spans_from_nodes(sentence_nodes)
+    
+    span_graph_builder = SpanGraph()
+    span_graph_builder.add_nodes(spans)
+    span_graph_builder.compute_embeddings()
+    span_graph_builder.add_structural_edges()
+    span_graph_builder.add_semantic_edges(threshold=0.7)
+    span_graph_builder.add_discourse_edges()
+    print(f"✓ Span Graph: {span_graph_builder.graph.number_of_nodes()} nodes, {span_graph_builder.graph.number_of_edges()} edges")
+    
+    # Export Span Graph visualization
+    span_graph_builder.export_graph_image('graphs/span_graph.png')
+    print(f"✓ Saved: graphs/span_graph.png")
+    
+    # 5. Build Knowledge Graph
+    print("\n[5/6] Building Knowledge Graph...")
+    kg_builder = KnowledgeGraphBuilder()
+    kg_data = kg_builder.build_kg(spans)
+    kg_graph = kg_data['graph']  # Extract NetworkX graph from result
+    print(f"✓ KG: {kg_graph.number_of_nodes()} nodes, {kg_graph.number_of_edges()} edges")
+    
+    # Export KG visualization
+    kg_builder.export_graph_image('graphs/kg_graph.png')
+    print(f"✓ Saved: graphs/kg_graph.png")
+    
+    # 6. Answer questions
+    print("\n[6/6] Testing Question Answering...")
+    reasoner = EnhancedHybridReasoner(
+        sentence_graph=drg.graph,
+        span_graph=span_graph_builder.graph,
+        knowledge_graph=kg_data  # Pass the complete kg data dict
+    )
+    
+    for i, question in enumerate(questions, 1):
+        print(f"\nQ{i}: {question}")
+        results = reasoner.enhanced_reasoning(question, k=3)
+        final_spans = results.get('final_spans', [])
         
-        print(f"[{idx}/{len(samples)}] Q: {question[:60]}...")
-        
-        try:
-            # Build graphs
-            pages = [{"page": 1, "text": context}]
-            sentence_nodes = build_nodes(pages)
-            
-            # Sentence graph
-            drg = DocumentReasoningGraph()
-            drg.add_nodes(sentence_nodes)
-            drg.compute_embeddings()
-            drg.add_structural_edges()
-            drg.add_semantic_edges(threshold=0.75)
-            
-            # Span graph
-            span_extractor = SpanExtractor()
-            spans = span_extractor.extract_spans_from_nodes(sentence_nodes)
-            span_graph_builder = SpanGraph()
-            span_graph_builder.add_nodes(spans)
-            span_graph_builder.compute_embeddings()
-            span_graph_builder.add_structural_edges()
-            span_graph_builder.add_semantic_edges(threshold=0.7)
-            span_graph_builder.add_discourse_edges()
-            
-            # Knowledge graph
-            kg_builder = KnowledgeGraphBuilder()
-            kg = kg_builder.build_kg(spans)
-            
-            # Reasoning
-            reasoner = EnhancedHybridReasoner(
-                sentence_graph=drg.graph,
-                span_graph=span_graph_builder.graph,
-                knowledge_graph=kg
-            )
-            
-            results = reasoner.enhanced_reasoning(question, k=5)
-            final_spans = results.get('final_spans', [])
-            
-            # Extract answer
-            prediction = find_answer_in_spans(question, ground_truth, span_graph_builder.graph, final_spans)
-            
-            if not prediction or prediction == ground_truth.lower():
-                # Fallback: try to get answer from context
-                if ground_truth.lower() in context.lower():
-                    prediction = ground_truth
-                elif final_spans and final_spans[0] in span_graph_builder.graph.nodes:
-                    prediction = span_graph_builder.graph.nodes[final_spans[0]]['text']
-                else:
-                    prediction = "No answer"
-            
-            # Evaluate
-            scores = evaluator.evaluate(prediction, ground_truth)
-            scores_list.append(scores)
-            
-            print(f"      Pred: {prediction[:50]}...")
-            print(f"      True: {ground_truth[:50]}...")
-            print(f"      F1: {scores['f1']:.3f}, EM: {scores['exact_match']:.0f}\n")
-            
-        except Exception as e:
-            print(f"      ⚠ Error: {str(e)[:60]}")
-            scores_list.append({'f1': 0.0, 'exact_match': 0.0})
-            print()
-    
-    # Summary
-    print("\n" + "="*70)
-    print("RESULTS")
-    print("="*70)
-    print(f"Samples evaluated: {len(scores_list)}")
-    
-    f1_scores = [s['f1'] for s in scores_list]
-    em_scores = [s['exact_match'] for s in scores_list]
-    
-    print(f"\n📊 F1 SCORE:")
-    print(f"   Mean:    {np.mean(f1_scores):.4f}")
-    print(f"   Median:  {np.median(f1_scores):.4f}")
-    print(f"   Min-Max: {np.min(f1_scores):.4f} - {np.max(f1_scores):.4f}")
-    
-    print(f"\n📊 EXACT MATCH:")
-    print(f"   Mean:    {np.mean(em_scores):.4f} ({np.mean(em_scores)*100:.1f}%)")
-    print(f"   Median:  {np.median(em_scores):.4f}")
-    print(f"   Min-Max: {np.min(em_scores):.4f} - {np.max(em_scores):.4f}")
+        if final_spans:
+            print(f"   Retrieved {len(final_spans)} spans")
+            # Show top answer
+            top_span_id = final_spans[0]
+            if top_span_id in span_graph_builder.graph.nodes:
+                text = span_graph_builder.graph.nodes[top_span_id]['text']
+                print(f"   Answer: {text[:150]}...")
+        else:
+            print("   No answer found")
     
     print("\n" + "="*70)
+    print("TEST COMPLETE")
+    print("="*70)
+    print("\nGraph visualizations saved to:")
+    print("  - graphs/drg_graph.png")
+    print("  - graphs/span_graph.png")
+    print("  - graphs/kg_graph.png")
+    print()
 
 
 if __name__ == "__main__":
-    csv_path = r"C:\Users\kotad\OneDrive\Desktop\INLP\dev.csv"
+    # Sample test
+    sample_pdf = r"C:\Users\kotad\OneDrive\Desktop\INLP\Assignment 1\Assignment-1.pdf"
+    sample_questions = [
+        "What is the main objective?",
+        "What are the key requirements?",
+        "What is the evaluation criteria?"
+    ]
     
+    # Check if PDF path provided as argument
     if len(sys.argv) > 1:
-        csv_path = sys.argv[1]
+        sample_pdf = sys.argv[1]
     
-    if len(sys.argv) > 2:
-        num_samples = int(sys.argv[2])
+    if Path(sample_pdf).exists():
+        test_qa_system(sample_pdf, sample_questions)
     else:
-        num_samples = 10
-    
-    run_benchmark(csv_path, num_samples)
+        print(f"PDF not found: {sample_pdf}")
+        print("\nUsage: python test_qa.py <pdf_path>")
