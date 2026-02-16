@@ -28,11 +28,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.title("🔍 Graph-Based Document QA")
+st.title("🔍 Graph-Based Document QA System")
 st.markdown("""
-Multi-level graph reasoning for faithful document question answering.
-Upload a PDF and ask questions with evidence-based retrieval.
-""")
+<div style='background-color: #0e1117; padding: 1rem; border-radius: 0.5rem; border-left: 4px solid #4CAF50;'>
+    <p style='margin: 0; color: #e0e0e0;'>
+        <strong>Multi-level graph reasoning</strong> for faithful document question answering.<br>
+        Supports <strong>multilingual queries</strong> including English, Hindi, and Hinglish.
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
 # Session state for caching
 if 'graphs' not in st.session_state:
@@ -120,35 +124,39 @@ def extract_answer_text(results, span_graph, max_length=200):
 # Sidebar - PDF Upload
 with st.sidebar:
     st.header("📤 Upload Document")
-    uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
+    st.markdown("*Upload a PDF to analyze and ask questions*")
+    uploaded_file = st.file_uploader("Choose a PDF file", type="pdf", help="Upload any PDF document to start asking questions")
     
     if uploaded_file:
         file_size_mb = len(uploaded_file.getvalue()) / (1024 * 1024)
-        st.info(f"File: {uploaded_file.name} ({file_size_mb:.1f} MB)")
+        st.info(f"📄 **{uploaded_file.name}** ({file_size_mb:.1f} MB)")
         
-        if st.button("Process PDF", use_container_width=True):
-            with st.spinner("Building document graphs..."):
+        if st.button("🚀 Process PDF", use_container_width=True, type="primary"):
+            with st.spinner("🔨 Building multi-level graphs from document..."):
                 st.session_state.graphs = build_graphs_from_pdf(
                     uploaded_file.getvalue(),
                     uploaded_file.name
                 )
                 st.session_state.pdf_name = uploaded_file.name
-            st.success("✓ Document processed!")
+            st.success("✅ Document processed successfully!")
+            st.balloons()
     
     st.divider()
     
     # Document info
     if st.session_state.graphs:
+        st.markdown("---")
+        st.markdown("### 📊 Document Statistics")
         col1, col2 = st.columns(2)
         with col1:
             num_sentences = st.session_state.graphs['drg'].graph.number_of_nodes()
-            st.metric("Sentences", num_sentences)
+            st.metric("📝 Sentences", num_sentences, help="Total sentences in the document")
         with col2:
             num_spans = st.session_state.graphs['span_graph'].graph.number_of_nodes()
-            st.metric("Spans", num_spans)
+            st.metric("🔤 Spans", num_spans, help="Fine-grained text spans extracted")
         
         num_entities = len(st.session_state.graphs['kg']['entities'])
-        st.metric("Entities", num_entities)
+        st.metric("🏷️ Entities", num_entities, help="Named entities identified")
 
 
 # Main content
@@ -156,103 +164,152 @@ if st.session_state.graphs:
     col1, col2 = st.columns([2, 1], gap="medium")
     
     with col1:
-        st.header("❓ Ask Question")
+        st.header("❓ Ask a Question")
         question = st.text_input(
             "Enter your question about the document:",
-            placeholder="e.g., What is the deadline? When should I submit?"
+            placeholder="e.g., What is the deadline? / Marks kya hain isme? / When should I submit?",
+            help="Ask in English, Hindi, or Hinglish!"
         )
         
         if question:
-            with st.spinner("Searching for answer..."):
+            with st.spinner("🔍 Searching for answer..."):
                 results = st.session_state.graphs['reasoner'].enhanced_reasoning(
                     question, 
                     k=5
                 )
             
             # Display answer
-            st.subheader("📍 Answer")
+            st.markdown("---")
+            st.subheader("📌 Answer")
             answer, answer_spans = extract_answer_text(
                 results,
                 st.session_state.graphs['span_graph']
             )
             
-            st.success(answer)
+            # Styled answer box
+            st.markdown(f"""
+            <div style='background-color: #1e3a1e; padding: 1.5rem; border-radius: 0.5rem; border-left: 5px solid #4CAF50;'>
+                <h3 style='color: #4CAF50; margin-top: 0;'>✅ {answer}</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Evidence
+            st.markdown("")
             st.subheader("📋 Evidence Spans")
+            if len(answer_spans) > 1:
+                st.caption(f"Found {len(answer_spans)} supporting evidence spans")
             for i, span_text in enumerate(answer_spans, 1):
-                with st.expander(f"Evidence {i}", expanded=(i==1)):
-                    st.write(span_text)
+                with st.expander(f"📄 Evidence {i}", expanded=(i==1)):
+                    st.markdown(f"*{span_text}*")
             
             # Breakdown
-            with st.expander("🔍 Retrieval Breakdown", expanded=False):
+            st.markdown("")
+            with st.expander("🔬 Retrieval Breakdown", expanded=False):
                 col_a, col_b = st.columns(2)
                 
                 with col_a:
-                    st.markdown("**Retrieval Methods**")
+                    st.markdown("**🎯 Retrieval Methods**")
                     hybrid = len(results.get('hybrid_results', []))
                     traversal = len(results.get('traversal_results', []))
                     expansion = len(results.get('expansion_results', []))
                     
-                    st.write(f"• Hybrid: {hybrid} spans")
-                    st.write(f"• Traversal: {traversal} spans")
-                    st.write(f"• Expansion: {expansion} spans")
+                    st.metric("Hybrid Retrieval", hybrid, help="BM25 + Semantic + Centrality")
+                    st.metric("Graph Traversal", traversal, help="Multi-hop graph navigation")
+                    st.metric("Query Expansion", expansion, help="Synonym-based expansion")
                 
                 with col_b:
-                    st.markdown("**Knowledge Graph**")
+                    st.markdown("**🧠 Knowledge Graph**")
                     kg_entities = results.get('kg_entities', [])
-                    st.write(f"• Entities used: {len(kg_entities)}")
+                    st.metric("Entities Found", len(kg_entities), help="Named entities used in reasoning")
+                    if kg_entities:
+                        st.caption("Entities: " + ", ".join(kg_entities[:5]))
     
     with col2:
-        st.header("📊 Statistics")
+        st.header("📊 Document Stats")
         
         st.metric(
-            "Sentences",
-            st.session_state.graphs['drg'].graph.number_of_nodes()
+            "📝 Sentences",
+            st.session_state.graphs['drg'].graph.number_of_nodes(),
+            help="Total sentences in document"
         )
         st.metric(
-            "Spans",
-            st.session_state.graphs['span_graph'].graph.number_of_nodes()
+            "🔤 Spans",
+            st.session_state.graphs['span_graph'].graph.number_of_nodes(),
+            help="Fine-grained text spans"
         )
         st.metric(
-            "Entities",
-            len(st.session_state.graphs['kg']['entities'])
+            "🏷️ Entities",
+            len(st.session_state.graphs['kg']['entities']),
+            help="Named entities extracted"
         )
         
         st.divider()
         
-        st.markdown("### 🎯 System Info")
+        st.markdown("### 🎯 System Features")
         st.markdown("""
-        **Graph Types:**
-        - Sentence-level DRG
-        - Span-level graph
-        - Knowledge graph
+        **🔗 Graph Types:**
+        - 📊 Sentence-level DRG
+        - 🔤 Span-level graph
+        - 🧠 Knowledge graph
         
-        **Retrieval:**
-        - BM25 lexical matching
-        - Semantic embeddings
-        - Graph centrality
+        **🔍 Retrieval Methods:**
+        - 📚 BM25 lexical matching
+        - 🧬 Semantic embeddings
+        - 🌐 Graph centrality
+        - 🔄 Query expansion
         
-        **Languages:**
-        - English ✓
-        - 50+ languages ✓
+        **🌍 Languages Supported:**
+        - ✅ English
+        - ✅ Hindi / Hinglish
+        - ✅ 50+ languages
         """)
 
 else:
-    st.info("👈 Upload a PDF document to start asking questions!")
+    # Welcome screen
+    st.markdown("""
+    <div style='text-align: center; padding: 2rem;'>
+        <h2 style='color: #4CAF50;'>👈 Upload a PDF document to get started!</h2>
+        <p style='color: #888; font-size: 1.1rem;'>Click the upload button in the sidebar to begin</p>
+    </div>
+    """, unsafe_allow_html=True)
     
-    # Example
-    with st.expander("📖 How it works"):
+    # Feature highlights
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown("### 🌍 Multilingual")
+        st.markdown("Ask questions in **English, Hindi, or Hinglish**")
+    with col2:
+        st.markdown("### 🎯 Evidence-Based")
+        st.markdown("Get **faithful answers** with supporting text spans")
+    with col3:
+        st.markdown("### ⚡ Zero-Shot")
+        st.markdown("**No training required** - works out of the box")
+    
+    st.markdown("---")
+    
+    # How it works
+    with st.expander("📖 How it works", expanded=True):
         st.markdown("""
-        1. **Upload PDF**: Click the upload button in the sidebar
-        2. **Process**: System builds multi-level graphs from document
-        3. **Ask Questions**: Type your question in natural language
-        4. **Get Answer**: System retrieves evidence spans from the document
-        5. **View Evidence**: See the relevant text supporting the answer
+        ### 🚀 Getting Started
         
-        **Key Features:**
-        - Multilingual queries (English, Hindi, Hinglish)
-        - Zero-shot - no training required
-        - Evidence-based answers with span highlighting
-        - Graph-based reasoning for faithful results
+        1. **📤 Upload PDF**: Click the upload button in the sidebar
+        2. **🔨 Process**: System builds multi-level graphs from the document
+        3. **❓ Ask Questions**: Type your question in natural language
+        4. **📌 Get Answer**: System retrieves evidence-based answers
+        5. **📋 View Evidence**: See supporting text spans from the document
+        
+        ### ✨ Key Features
+        
+        - 🌍 **Multilingual**: English, Hindi, Hinglish support
+        - ⚡ **Zero-shot**: No training required
+        - 📊 **Graph-based**: Multi-level reasoning (sentence + span + knowledge)
+        - 🎯 **Faithful**: Evidence-based answers with proper citations
+        - 🔍 **Hybrid retrieval**: BM25, semantic embeddings, graph centrality
+        
+        ### 💡 Example Questions
+        
+        - *"What is the deadline for submission?"*
+        - *"Marks kya hain isme?"* (What are the marks?)
+        - *"When should I submit?"*
+        - *"Assignment ka weightage kitna hai?"* (What is the assignment weightage?)
         """)
