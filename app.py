@@ -3,9 +3,13 @@ Streamlit QA Interface for Graph-Based Document Question Answering
 Upload PDF and ask questions with evidence-based retrieval
 """
 
+# Suppress TensorFlow warnings
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 import streamlit as st
 import tempfile
-import os
 
 from parser.pdf_parser import extract_pages
 from parser.drg_nodes import build_nodes
