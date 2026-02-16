@@ -1,16 +1,18 @@
-import re
-from nltk.tokenize import sent_tokenize
+import spacy
+from typing import List
 
-def clean_text(text: str) -> str:
-    """
-    Remove weird spacing and artifacts.
-    """
-    text = re.sub(r"\s+", " ", text)
-    text = text.replace("\n", " ")
-    return text.strip()
+# Load spaCy English model
+try:
+    nlp = spacy.load("en_core_web_sm")
+except OSError:
+    print("Downloading spaCy model...")
+    import subprocess
+    subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"], check=True)
+    nlp = spacy.load("en_core_web_sm")
 
 
-def split_into_sentences(text: str):
-    text = clean_text(text)
-    sentences = sent_tokenize(text)
-    return [s.strip() for s in sentences if len(s.strip()) > 3]
+def split_into_sentences(text: str) -> List[str]:
+    """Split text into sentences using spaCy NLP."""
+    doc = nlp(text)
+    sentences = [sent.text.strip() for sent in doc.sents if len(sent.text.strip()) > 3]
+    return sentences

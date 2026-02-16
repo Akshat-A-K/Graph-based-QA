@@ -14,7 +14,7 @@ from typing import List, Dict
 class SpanGraph:
     """Build and manage span-level document graph."""
     
-    def __init__(self, model_name="sentence-transformers/all-MiniLM-L6-v2"):
+    def __init__(self, model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2"):
         print("Loading embedding model for span graph...")
         self.model = SentenceTransformer(model_name)
         self.graph = nx.Graph()

@@ -1,18 +1,17 @@
-# Core
-numpy
-tqdm
+# Core dependencies
+numpy>=1.20.0
+tqdm>=4.60.0
 
-# Graph
-networkx
+# Graph processing
+networkx>=2.6
 
-# PDF processing
-pymupdf
+# PDF extraction
+pymupdf>=1.20.0
 
 # NLP
-nltk
-sentence-transformers
-scikit-learn
+spacy>=3.0.0
+sentence-transformers>=2.2.0
+scikit-learn>=1.0.0
 
-# Optional (recommended for later)
-torch
-transformers
+# UI
+streamlit>=1.20.0

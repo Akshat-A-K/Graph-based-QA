@@ -15,8 +15,7 @@ from .advanced_retrieval import (
     BM25Retriever,
     GraphCentrality,
     HybridScorer,
-    QueryExpander,
-    EdgeWeighting
+    QueryExpander
 )
 
 
@@ -31,13 +30,15 @@ class EnhancedHybridReasoner:
         sentence_graph: nx.Graph,
         span_graph: nx.Graph,
         knowledge_graph: Dict,
-        model_name="sentence-transformers/all-MiniLM-L6-v2",
+        model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
         use_cross_encoder=False
     ):
         self.sentence_graph = sentence_graph
         self.span_graph = span_graph
         self.kg = knowledge_graph
+        print(f"🌍 Loading multilingual model: {model_name}")
         self.model = SentenceTransformer(model_name)
+        print("✓ Multilingual embeddings ready (supports 50+ languages including Hindi/Hinglish)")
         
         # Advanced components
         self.bm25_spans = None
