@@ -53,11 +53,16 @@ inlp_project/
 │   ├── pdf_parser.py          # PDF → text
 │   ├── sentence_splitter.py   # text → sentences
 │   ├── section_utils.py       # detect sections
-│   ├── drg_nodes.py           # build nodes
-│   ├── drg_graph.py           # build graph
-│   └── reasoning_engine.py    # graph reasoning
+│   ├── drg_nodes.py           # build sentence nodes
+│   ├── drg_graph.py           # build sentence graph
+│   ├── reasoning_engine.py    # sentence-level reasoning
+│   ├── span_extractor.py      # extract fine-grained spans (NEW)
+│   ├── span_graph.py          # build span-level graph (NEW)
+│   ├── kg_builder.py          # build knowledge graph (NEW)
+│   └── hybrid_reasoner.py     # multi-level reasoning (NEW)
 │
-├── test_reasoning.py          # example run script
+├── test_reasoning.py          # sentence-level demo
+├── test_hybrid.py             # hybrid KG+span demo (NEW)
 ├── requirements.txt
 └── README.md
 ```
@@ -100,33 +105,22 @@ nltk.download("punkt_tab")
 
 ## ▶️ How to Run
 
-### Step 1 — Place PDF
-
-Put your document in project folder:
-
-```
-sample.pdf
-```
-
-### Step 2 — Edit test file
-
-Open:
-
-```
-test_reasoning.py
-```
-
-Set path:
-
-```python
-pdf_path = "sample.pdf"
-query = "When is the deadline?"
-```
-
-### Step 3 — Run system
+### Basic Demo (Sentence-Level)
 
 ```bash
 python test_reasoning.py
+```
+
+### Advanced Demo (KG + Span Graphs)
+
+```bash
+python test_hybrid.py
+```
+
+### Custom Query
+
+```bash
+python test_hybrid.py Assignment-1.pdf "Your question here"
 ```
 
 ---
@@ -167,26 +161,40 @@ page
 section
 ```
 
+### � Span Extractor (NEW)
+
+Extracts fine-grained text spans:
+- Clauses (split by discourse markers)
+- Important phrases (dates, conditions, negations)
+- Keyword spans (deadlines, requirements)
+
 ### 🔗 Graph Builder
 
-Edges added:
+Three types of graphs:
 
-* same page
-* same section
-* adjacent sentences
-* semantic similarity
+1. **Sentence Graph** - Original DRG with sentence nodes
+2. **Span Graph** - Fine-grained graph with clause/phrase nodes
+3. **Knowledge Graph** - Entities and relations
+
+Edges added:
+* Structural: same page, section, adjacent
+* Semantic: embedding similarity
+* Discourse: conditions, exceptions, temporal
 
 ### 🧠 Reasoning Engine
 
-Implements 3 strategies:
+Implements 5+ strategies:
 
-| Method     | Description           |
-| ---------- | --------------------- |
-| Flat       | embedding retrieval   |
-| Structural | neighbor expansion    |
-| Emergent   | graph-based reasoning |
+| Method              | Description                           |
+| ------------------- | ------------------------------------- |
+| Flat                | Embedding retrieval (sentence-level)  |
+| Structural          | Neighbor expansion                    |
+| Emergent            | Graph-based reasoning                 |
+| Span Retrieval      | Fine-grained span matching            |
+| KG-Guided           | Entity-based evidence selection       |
+| Hybrid Multi-Level  | Combines all representations (BEST)   |
 
-Emergent reasoning is the main contribution.
+Hybrid reasoning is the main contribution.
 
 ---
 
@@ -243,13 +251,28 @@ System:
 
 ---
 
-## 📌 Future Work
+## 📌 Latest Updates (Feb 2026)
 
+### ✅ **NEW: Knowledge Graph & Span Graph Integration**
+
+- **Span-level extraction**: Fine-grained clauses, phrases, and keywords
+- **Knowledge Graph**: Entities (dates, requirements, constraints) + relations
+- **Span Graph**: Discourse relations (conditions, exceptions, temporal)
+- **Hybrid reasoning**: Multi-level evidence selection combining all graphs
+
+See [KG_SPAN_INTEGRATION_SUMMARY.md](KG_SPAN_INTEGRATION_SUMMARY.md) for details.
+
+### 🚧 **TODO: Hinglish Support**
+
+See [HINGLISH_ROADMAP.md](HINGLISH_ROADMAP.md) for implementation plan.
+
+Next steps:
+* Multilingual embeddings
+* Hinglish query translation
 * LLM answer generation
-* reasoning visualization
-* multilingual grounding
+* Evaluation metrics
+* Reasoning visualization
 * UI demo (Streamlit)
-* evaluation benchmark
 
 ---
 
