@@ -25,23 +25,39 @@ class SpanExtractor:
     """Extract fine-grained spans from sentences."""
     
     def __init__(self):
-        # Patterns for clause boundaries
+        # Patterns for clause boundaries (more conservative to avoid over-splitting)
         self.clause_markers = [
-            r',\s+(?:if|unless|except|when|where|while|although|because|since)',
             r';\s+',
-            r'\s+(?:but|and|or)\s+',
-            r':\s+',
+            r':\s+(?=[A-Z])',  # Only split on colon if followed by capital
         ]
         
-        # Patterns for important phrases
+        # Enhanced patterns for important phrases with better coverage
         self.important_patterns = [
-            r'\b(?:deadline|due date|submission|extension)\b[^.;]*',
-            r'\b(?:submission format|file structure|zip file|compressed|compression)\b[^.;]*',
-            r'\b(?:not|no|never|cannot|must not|shall not)\b[^.;]*',
-            r'\b(?:if|unless|except|only if|provided that)\b[^.;]*',
-            r'\b(?:must|shall|should|required|mandatory)\b[^.;]*',
-            r'\d{1,2}(?:st|nd|rd|th)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}',
-            r'\d{1,2}:\d{2}\s*(?:am|pm|AM|PM)?',
+            # Deadlines and dates
+            r'\b(?:deadline|due date|last date|final date|submission date|closing date)[^.;]*?(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}(?:st|nd|rd|th)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}|23:59|11:59)',
+            r'\b\d{1,2}(?:st|nd|rd|th)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}[^.;]{0,50}',
+            r'\b(?:submission|submit|deadline|due)[^.;]{0,80}(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}:\d{2})',
+            
+            # Submission formats and file structure
+            r'\b(?:submission format|file format|file structure|directory structure|folder structure|compressed|zip file|archive)[^.;]*',
+            r'\b(?:format|structure|organization)(?:\s+of|\s+for)?\s+(?:submission|files?|assignment|project)[^.;]{0,100}',
+            
+            # Constraints and negations (keep them together with context)
+            r'\b(?:not allowed|cannot|must not|shall not|prohibited|forbidden|banned|restriction)[^.;]{0,80}',
+            r'\b(?:except|excluding|does not include|but not|other than|apart from|with the exception)[^.;]{0,100}',
+            
+            # Conditional statements (keep full condition)
+            r'\b(?:if|unless|provided that|only if|in case|on condition that)[^.;]{0,120}',
+            
+            # Requirements (with context)
+            r'\b(?:must|shall|required to|mandatory|need to|have to|should|obligatory)[^.;]{0,100}',
+            
+            # Times
+            r'\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm|AM|PM|hours?)?[^.;]{0,30}',
+            r'\b(?:23:59|11:59|00:00|noon|midnight)[^.;]{0,30}',
+            
+            # Scores and marks
+            r'\b\d+\s*(?:marks?|points?|credits?|grade|percentage|%)[^.;]{0,50}',
         ]
     
     def extract_spans_from_sentence(
@@ -52,49 +68,80 @@ class SpanExtractor:
         section: str,
         start_span_id: int = 0
     ) -> List[Span]:
-        """Extract multiple spans from a single sentence."""
+        """Extract multiple spans from a single sentence with improved quality."""
         spans = []
         span_id = start_span_id
         
-        # 1. Extract clauses by splitting on markers
-        clauses = self._split_into_clauses(sentence)
+        # 1. ALWAYS include the full sentence as a span (improves readability)
+        spans.append(Span(
+            span_id=span_id,
+            text=sentence.strip(),
+            start_char=0,
+            end_char=len(sentence),
+            span_type="sentence",
+            page=page,
+            section=section,
+            sentence_id=sentence_id
+        ))
+        span_id += 1
         
-        offset = 0
-        for clause in clauses:
-            if len(clause.strip()) > 10:  # minimum clause length
-                spans.append(Span(
-                    span_id=span_id,
-                    text=clause.strip(),
-                    start_char=offset,
-                    end_char=offset + len(clause),
-                    span_type="clause",
-                    page=page,
-                    section=section,
-                    sentence_id=sentence_id
-                ))
-                span_id += 1
-            offset += len(clause)
-        
-        # 2. Extract important phrases (dates, conditions, negations)
+        # 2. Extract important phrases (dates, conditions, negations, etc.)
+        extracted_positions = set()
         for pattern in self.important_patterns:
             matches = re.finditer(pattern, sentence, re.IGNORECASE)
             for match in matches:
                 phrase = match.group(0).strip()
-                if len(phrase) > 5:
+                if len(phrase) > 10:  # Minimum phrase length for quality
                     # Determine phrase type
                     phrase_type = self._classify_phrase(phrase)
                     
-                    spans.append(Span(
-                        span_id=span_id,
-                        text=phrase,
-                        start_char=match.start(),
-                        end_char=match.end(),
-                        span_type=phrase_type,
-                        page=page,
-                        section=section,
-                        sentence_id=sentence_id
-                    ))
-                    span_id += 1
+                    # Check for overlap with existing spans to avoid duplicates
+                    overlap = False
+                    for start, end in extracted_positions:
+                        if not (match.end() <= start or match.start() >= end):
+                            overlap = True
+                            break
+                    
+                    if not overlap:
+                        spans.append(Span(
+                            span_id=span_id,
+                            text=phrase,
+                            start_char=match.start(),
+                            end_char=match.end(),
+                            span_type=phrase_type,
+                            page=page,
+                            section=section,
+                            sentence_id=sentence_id
+                        ))
+                        extracted_positions.add((match.start(), match.end()))
+                        span_id += 1
+        
+        # 3. Only split into clauses if sentence is very long (>150 chars)
+        if len(sentence) > 150:
+            clauses = self._split_into_clauses(sentence)
+            offset = 0
+            for clause in clauses:
+                if len(clause.strip()) > 30:  # Higher minimum for clause quality
+                    # Check if not already covered by important patterns
+                    overlap = False
+                    for start, end in extracted_positions:
+                        if not (offset + len(clause) <= start or offset >= end):
+                            overlap = True
+                            break
+                    
+                    if not overlap:
+                        spans.append(Span(
+                            span_id=span_id,
+                            text=clause.strip(),
+                            start_char=offset,
+                            end_char=offset + len(clause),
+                            span_type="clause",
+                            page=page,
+                            section=section,
+                            sentence_id=sentence_id
+                        ))
+                        span_id += 1
+                offset += len(clause)
         
         return spans
     

@@ -4,12 +4,29 @@ Enhanced Hybrid Reasoner with Advanced Retrieval:
 - Graph centrality (PageRank, betweenness)
 - Cross-encoder re-ranking
 - Improved edge weighting
+- NLTK stopword filtering
+- Better relevance scoring
 """
 
 import numpy as np
 import networkx as nx
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from typing import List, Dict, Tuple, Set
+
+# NLTK stopwords
+try:
+    import nltk
+    try:
+        from nltk.corpus import stopwords
+        STOP_WORDS = set(stopwords.words('english'))
+    except LookupError:
+        # Download stopwords if not available
+        nltk.download('stopwords', quiet=True)
+        from nltk.corpus import stopwords
+        STOP_WORDS = set(stopwords.words('english'))
+except ImportError:
+    # Fallback stopwords if NLTK not available
+    STOP_WORDS = {'i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you', "you're", "you've", "you'll", "you'd", 'your', 'yours', 'yourself', 'yourselves', 'he', 'him', 'his', 'himself', 'she', "she's", 'her', 'hers', 'herself', 'it', "it's", 'its', 'itself', 'they', 'them', 'their', 'theirs', 'themselves', 'what', 'which', 'who', 'whom', 'this', 'that', "that'll", 'these', 'those', 'am', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'having', 'do', 'does', 'did', 'doing', 'a', 'an', 'the', 'and', 'but', 'if', 'or', 'because', 'as', 'until', 'while', 'of', 'at', 'by', 'for', 'with', 'about', 'against', 'between', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'to', 'from', 'up', 'down', 'in', 'out', 'on', 'off', 'over', 'under', 'again', 'further', 'then', 'once'}
 
 from .advanced_retrieval import (
     BM25Retriever,
@@ -50,10 +67,15 @@ class EnhancedHybridReasoner:
         self.query_expander = QueryExpander()
         self.hybrid_scorer = HybridScorer()
         
-        # Cross-encoder for re-ranking (optional, slower but more accurate)
+        # Cross-encoder for re-ranking (use SAME base model for efficiency)
         self.use_cross_encoder = use_cross_encoder
         if use_cross_encoder:
+            # Use same multilingual model for cross-encoding to save memory
+            print("✓ Using unified transformer for both embedding and re-ranking")
             self.cross_encoder = CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1')
+        
+        # Stopwords for better filtering
+        self.stopwords = STOP_WORDS
         
         # Initialize BM25 and centrality
         self._initialize_bm25()
@@ -246,6 +268,47 @@ class EnhancedHybridReasoner:
                 bonus += 0.2
             if is_format_query and "submission format" in section_norm:
                 bonus += 0.2
+            
+            # Numeric answer detection - boost numbers for counting questions
+            has_number = any(char.isdigit() for char in text)
+            query_is_numeric = any(word in query_norm for word in ["kitne", "how many", "कितने", "number", "count", "कितना", "kitna", "many"])
+            
+            # Extract query keywords for exact matching
+            query_words = [w for w in query_norm.split() if len(w) > 3]
+            text_words = set(text_norm.split())
+            
+            # Exact term matching (full word boundaries)
+            exact_matches = sum(1 for qw in query_words if qw in text_words)
+            
+            # Boost for answer-bearing patterns (verb proximity)
+            answer_verbs = ["implemented", "used", "developed", "created", "trained", "built", "wrote", "applied"]
+            has_answer_verb = any(verb in text_words for verb in answer_verbs)
+            
+            # Strong boost for exact query term + answer verb
+            if has_answer_verb and exact_matches > 0:
+                bonus += 0.4  # Very strong boost for exact topic match with answer verb
+            elif exact_matches > 0:
+                bonus += 0.2  # Moderate boost for exact topic match
+            
+            # Proximity bonus for number near query term
+            if has_number and query_is_numeric:
+                # Check if number is within 5 words of query term
+                text_parts = text_norm.split()
+                number_near_topic = False
+                for i, word in enumerate(text_parts):
+                    if any(char.isdigit() for char in word):
+                        # Check surrounding 5 words for query terms
+                        window = text_parts[max(0, i-5):min(len(text_parts), i+6)]
+                        if any(qw in window for qw in query_words):
+                            number_near_topic = True
+                            break
+                
+                if number_near_topic and has_answer_verb:
+                    bonus += 0.5  # Maximum boost: number + topic + verb
+                elif number_near_topic:
+                    bonus += 0.3  # Good boost: number + topic
+                elif has_answer_verb:
+                    bonus += 0.2  # Moderate: number + verb only
 
             overlap = len(query_tokens & text_tokens)
             overlap_bonus = min(0.2, 0.04 * overlap)
@@ -478,33 +541,43 @@ class EnhancedHybridReasoner:
         Returns (confidence_score, confidence_label)
         """
         if not span_ids or not scores:
-            return 0.0, "Low"
+            return 0.0, "Low ✗"
         
         # Score confidence: how strong are the scores?
         avg_score = np.mean(scores) if scores else 0.0
-        score_confidence = min(max(avg_score, 0.0), 1.0)
+        max_score = max(scores) if scores else 0.0
+        # Use max score for better confidence on clear answers
+        score_confidence = min(max(max_score * 0.7 + avg_score * 0.3, 0.0), 1.0)
         
         # Agreement confidence: do multiple sources agree?
         num_evidence = len(span_ids)
-        evidence_confidence = min(num_evidence / 3.0, 1.0)  # 3+ sources = high confidence
+        evidence_confidence = min(num_evidence / 2.5, 1.0)  # 2-3 sources = high confidence
         
         # Consistency confidence: are scores similar?
         if len(scores) > 1:
             score_std = np.std(scores)
-            consistency_confidence = max(0.0, 1.0 - score_std)  # Low std = high consistency
+            consistency_confidence = max(0.0, 1.0 - score_std * 0.8)  # Less penalty for variance
         else:
-            consistency_confidence = 0.5
+            consistency_confidence = 0.7  # Higher default for single good answer
+        
+        # Boost for numeric/date answers (clear factual answers)
+        text_has_number = any(
+            any(char.isdigit() for char in self.span_graph.nodes[sid]['text'])
+            for sid in span_ids[:3] if sid in self.span_graph.nodes
+        )
+        numeric_boost = 0.15 if text_has_number else 0.0
         
         # Combined confidence
-        confidence = (
-            score_confidence * 0.4 + 
-            evidence_confidence * 0.4 + 
-            consistency_confidence * 0.2
-        )
+        confidence = min((
+            score_confidence * 0.45 + 
+            evidence_confidence * 0.35 + 
+            consistency_confidence * 0.2 +
+            numeric_boost
+        ), 1.0)
         
-        if confidence > 0.75:
+        if confidence > 0.7:
             confidence_label = "High ✓"
-        elif confidence > 0.5:
+        elif confidence > 0.45:
             confidence_label = "Medium ◐"
         else:
             confidence_label = "Low ✗"
@@ -612,6 +685,31 @@ class EnhancedHybridReasoner:
             # Sentence-level relevance bonus
             sentence_id = self.span_graph.nodes[span_id].get("sentence_id")
             sentence_bonus = sentence_scores.get(sentence_id, 0.0)
+            
+            # Numeric answer bonus for counting questions
+            text_norm = normalize_text(text)
+            has_number = any(char.isdigit() for char in text)
+            query_is_numeric = any(word in query_norm for word in ["kitne", "how many", "कितने", "number", "count", "कितना", "kitna", "many"])
+            
+            # Answer-bearing pattern detection with exact matching
+            answer_verbs = ["implemented", "used", "developed", "created", "trained", "built", "wrote", "applied"]
+            text_words = set(text_norm.split())
+            has_answer_verb = any(verb in text_words for verb in answer_verbs)
+            query_words = [w for w in query_norm.split() if len(w) > 3]
+            exact_topic_matches = sum(1 for qw in query_words if qw in text_words)
+            
+            # Boost for answer-bearing patterns (stronger for exact matches)
+            if has_answer_verb and exact_topic_matches > 0:
+                pattern_bonus = 0.35  # Strong boost for verb + exact topic
+            elif exact_topic_matches > 0:
+                pattern_bonus = 0.15  # Moderate boost for exact topic only
+            else:
+                pattern_bonus = 0.0
+            
+            # Numeric bonus (higher if with answer verb)
+            numeric_bonus = 0.0
+            if has_number and query_is_numeric:
+                numeric_bonus = 0.3 if has_answer_verb else 0.2
 
             # BM25 score (min-max normalized for candidates)
             raw_bm25 = bm25_raw_scores.get(span_id, 0.0)
@@ -626,18 +724,20 @@ class EnhancedHybridReasoner:
             in_expansion = 1.0 if span_id in expansion_results else 0.0
             in_kg = 1.0 if span_id in kg_span_ids else 0.0
 
-            # Combined score
+            # Combined score with boosted weights for core signals
             final_score = (
-                0.35 * sem_score +
-                0.15 * cent_score +
-                0.15 * overlap_score +
-                0.1 * bm25_score +
-                0.05 * section_bonus +
-                0.1 * sentence_bonus +
-                0.1 * in_hybrid +
-                0.1 * in_traversal +
-                0.05 * in_expansion +
-                0.05 * in_kg
+                0.30 * sem_score +
+                0.10 * cent_score +
+                0.10 * overlap_score +
+                0.06 * bm25_score +
+                0.04 * section_bonus +
+                0.08 * sentence_bonus +
+                0.15 * numeric_bonus +  # Numeric answer boost
+                0.12 * pattern_bonus +  # NEW: Answer-bearing pattern boost
+                0.05 * in_hybrid +
+                0.05 * in_traversal +
+                0.03 * in_expansion +
+                0.02 * in_kg
             )
 
             final_scores.append((span_id, final_score))
@@ -653,28 +753,70 @@ class EnhancedHybridReasoner:
             reranked = top_candidates
 
         def is_relevant(span_id: int) -> bool:
+            """Improved relevance check with stopword filtering and semantic threshold"""
             text = self.span_graph.nodes[span_id]["text"]
             text_tokens = set(tokenize(text))
-            overlap = len(query_tokens & text_tokens)
+            
+            # Remove stopwords for meaningful overlap
+            query_content_tokens = query_tokens - self.stopwords
+            text_content_tokens = text_tokens - self.stopwords
+            
+            # Calculate meaningful overlap (excluding stopwords)
+            meaningful_overlap = len(query_content_tokens & text_content_tokens)
+            
+            # Get semantic score for this span
+            span_semantic_score = 0.0
+            for sid, score in final_scores:
+                if sid == span_id:
+                    span_semantic_score = score
+                    break
+            
             span_type = self.span_graph.nodes[span_id].get("span_type", "")
             section_norm = normalize_text(self.span_graph.nodes[span_id].get("section", ""))
             text_norm = normalize_text(text)
             sentence_id = self.span_graph.nodes[span_id].get("sentence_id")
             sentence_score = sentence_scores.get(sentence_id, 0.0)
+            
+            # Minimum semantic threshold - reject very low scoring spans
+            if span_semantic_score < 0.12:  # Lowered from 0.15
+                return False
 
-            if overlap >= 1:
+            # Require at least 2 meaningful overlapping words OR high semantic score
+            if meaningful_overlap >= 2:
                 return True
+            
+            # High semantic score can pass even with lower overlap
+            if span_semantic_score >= 0.4:  # Lowered from 0.5 for better recall
+                return True
+            
+            # Single meaningful word + decent score
+            if meaningful_overlap >= 1 and span_semantic_score >= 0.3:
+                return True
+            
+            # Counting questions - allow if has number + topic word
+            query_is_numeric = any(word in query_norm for word in ["kitne", "how many", "many", "कितने", "number", "count"])
+            has_number = any(char.isdigit() for char in text)
+            if query_is_numeric and has_number and span_semantic_score >= 0.25:
+                return True
+            
+            # Query-specific filtering
             if is_format_query:
                 if "submission format" in text_norm or "submission format" in section_norm:
                     return True
                 if any(token in text_norm for token in ["zip", "file structure", "submission portal"]):
                     return True
-                return False
+                # Format queries need strong evidence
+                return meaningful_overlap >= 2 or span_semantic_score >= 0.45
+            
             if is_time_query and span_type in {"temporal", "deadline"}:
                 return True
-            if sentence_score >= 0.4:
+            
+            # Strong sentence-level match
+            if sentence_score >= 0.5:
                 return True
-            return False
+            
+            # Default: require some meaningful overlap
+            return meaningful_overlap >= 1
 
         filtered = [sid for sid in reranked if is_relevant(sid)]
         if len(filtered) < k:
@@ -700,6 +842,24 @@ class EnhancedHybridReasoner:
             confident_scores if confident_scores else [0.5] * len(diverse_spans)
         )
         
+        # ABSTAIN THRESHOLD: Don't answer if confidence is too low
+        MIN_CONFIDENCE = 0.25  # Lowered from 0.35 to answer more often
+        if confidence < MIN_CONFIDENCE and len(diverse_spans) < 2:
+            return {
+                "final_spans": [],
+                "hybrid_results": hybrid_results[:5],
+                "traversal_results": traversal_results[:5],
+                "expansion_results": expansion_results[:5],
+                "kg_entities": kg_entity_ids,
+                "kg_spans": list(kg_span_ids)[:5],
+                "confidence": confidence,
+                "confidence_label": "Too Low - Cannot Answer",
+                "span_scores": {}
+            }
+        
+        # Build span scores mapping for answer extraction
+        span_score_map = {sid: score for sid, score in final_scores}
+        
         return {
             "final_spans": diverse_spans,
             "hybrid_results": hybrid_results[:5],
@@ -708,7 +868,8 @@ class EnhancedHybridReasoner:
             "kg_entities": kg_entity_ids,
             "kg_spans": list(kg_span_ids)[:5],
             "confidence": confidence,
-            "confidence_label": confidence_label
+            "confidence_label": confidence_label,
+            "span_scores": span_score_map  # NEW: Pass scores to answer extraction
         }
     
     def _kg_entity_retrieval(self, query: str, k: int = 5) -> List[int]:

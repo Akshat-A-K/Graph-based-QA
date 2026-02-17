@@ -116,8 +116,8 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
 
 def extract_answer_text(results, span_graph, query, reasoner=None, max_length=300):
     """
-    Extract readable answer from results with improved formatting and validation.
-    Includes confidence calculation and answer validation against evidence.
+    Extract readable answer using model ranking scores and sentence context.
+    Much more accurate than simple overlap scoring.
     """
     import re
     
@@ -126,55 +126,68 @@ def extract_answer_text(results, span_graph, query, reasoner=None, max_length=30
     if not final_spans:
         return "No answer found", [], 0.0, "Low ✗"
     
-    query_tokens = set(tokenize(query))
-    time_tokens = {"when", "deadline", "due", "date", "time", "antim", "aakhri", "tarikh", "tithi"}
-    is_time_query = bool(query_tokens & time_tokens)
-
-    # Get text from top spans with lightweight scoring
-    answers = []
-    scored_answers = []
-    for span_id in final_spans[:8]:
-        if span_id in span_graph.graph.nodes:
-            text = span_graph.graph.nodes[span_id]['text'].strip()
-            text_tokens = set(tokenize(text))
-            overlap = len(query_tokens & text_tokens)
-            overlap_bonus = min(0.2, 0.04 * overlap)
-            temporal_bonus = 0.15 if is_time_query and any(tok in normalize_text(text) for tok in ["deadline", "due", "date", "time"]) else 0.0
-            score = overlap_bonus + temporal_bonus + (0.05 if len(text) > 40 else 0.0)
-            scored_answers.append((text, score))
-            answers.append(text)
+    # Get the span scores from results for proper ranking
+    span_scores = results.get('span_scores', {})
     
-    if not answers:
+    # Sort spans by their actual model scores (not simple overlap)
+    ranked_spans = []
+    for span_id in final_spans[:15]:  # Increased from 10 to get better candidates
+        if span_id in span_graph.graph.nodes:
+            score = span_scores.get(span_id, 0.0)
+            text = span_graph.graph.nodes[span_id]['text'].strip()
+            sentence_id = span_graph.graph.nodes[span_id].get('sentence_id')
+            span_type = span_graph.graph.nodes[span_id].get('span_type', '')
+            
+            # Boost score for sentence-type spans (more complete)
+            if span_type == 'sentence':
+                score = score * 1.1
+            
+            ranked_spans.append((span_id, text, score, sentence_id, span_type))
+    
+    if not ranked_spans:
         return "No answer found", [], 0.0, "Low ✗"
     
-    # Try to find the best answer
-    if scored_answers:
-        scored_answers.sort(key=lambda x: x[1], reverse=True)
-        best_answer = scored_answers[0][0]
-    else:
-        best_answer = answers[0]
+    # Sort by boosted model score (highest first)
+    ranked_spans.sort(key=lambda x: x[2], reverse=True)
     
-    # If answer is very short, try to combine with context
-    if len(best_answer.strip()) < 50 and len(answers) > 1:
-        # Concatenate first 2-3 short answers for better context
-        combined = ' '.join(answers[:2])
-        if len(combined) < max_length:
-            best_answer = combined
+    # Get best answer with sentence context for readability
+    best_span_id, best_text, best_score, best_sentence_id, best_span_type = ranked_spans[0]
+    
+    # Prioritize sentence-type spans for better readability
+    if best_span_type == 'sentence' or len(best_text.strip()) >= 60:
+        best_answer = best_text
+    elif best_sentence_id is not None and best_sentence_id in reasoner.sentence_graph.nodes:
+        # Use full sentence for context
+        sentence_text = reasoner.sentence_graph.nodes[best_sentence_id]['text']
+        if len(sentence_text) < max_length * 1.2:
+            best_answer = sentence_text
+        else:
+            # Sentence too long, keep the span
+            best_answer = best_text
+    else:
+        best_answer = best_text
     
     # Clean up answer
     best_answer = re.sub(r'\s+', ' ', best_answer).strip()
     
+    # Collect ONLY highly relevant evidence spans (top 3 with high scores)
+    evidence_texts = []
+    for _, text, score, _, _ in ranked_spans[:5]:
+        # Only show evidence with score >= 60% of best score
+        if score >= best_score * 0.6:
+            evidence_texts.append(text)
+        if len(evidence_texts) >= 3:  # Max 3 evidence spans
+            break
+    
     # Validate answer against evidence
     if reasoner:
-        is_valid, coverage = reasoner.verify_answer_support(best_answer, answers)
+        is_valid, coverage = reasoner.verify_answer_support(best_answer, evidence_texts)
     else:
-        is_valid, coverage = True, 0.7  # Default if reasoner not available
+        is_valid, coverage = True, 0.7
     
     # Truncate if too long
     if len(best_answer) > max_length:
-        # Try to end at a sentence boundary
         best_answer = best_answer[:max_length]
-        # Find last sentence end
         last_period = max(best_answer.rfind('.'), best_answer.rfind('।'))
         if last_period > max_length * 0.6:
             best_answer = best_answer[:last_period + 1]
@@ -185,7 +198,7 @@ def extract_answer_text(results, span_graph, query, reasoner=None, max_length=30
     confidence = results.get('confidence', 0.5)
     confidence_label = results.get('confidence_label', 'Medium ◐')
     
-    return best_answer, answers, confidence, confidence_label
+    return best_answer, evidence_texts, confidence, confidence_label
 
 
 # Sidebar - PDF Upload
