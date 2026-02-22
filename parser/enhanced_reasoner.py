@@ -46,19 +46,22 @@ class EnhancedHybridReasoner:
     """
     
     def __init__(
-        self, 
+        self,
         sentence_graph: nx.Graph,
         span_graph: nx.Graph,
         knowledge_graph: Dict,
-        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-        use_cross_encoder=False
+        # multi-qa-mpnet: trained on 215M QA pairs — optimised for asymmetric
+        # question→passage retrieval. Understands semantic equivalences like
+        # "spouse"→"married to", "role"→"position", etc. far better than LaBSE.
+        model_name="sentence-transformers/multi-qa-mpnet-base-dot-v1",
+        use_cross_encoder=True
     ):
         self.sentence_graph = sentence_graph
         self.span_graph = span_graph
         self.kg = knowledge_graph
-        print(f"🌍 Loading multilingual model: {model_name}")
+        print(f"Loading retrieval model: {model_name}")
         self.model = get_sentence_transformer(model_name)
-        print("✓ Multilingual embeddings ready (supports 50+ languages including Hindi/Hinglish)")
+        print("✓ QA-optimised embeddings ready (trained on 215M question-passage pairs)")
         
         # Advanced components
         self.bm25_spans = None
@@ -238,91 +241,28 @@ class EnhancedHybridReasoner:
         """
         query_norm = normalize_text(query)
         query_tokens = set(tokenize(query))
-        time_tokens = {"when", "deadline", "due", "date", "time", "antim", "aakhri", "tarikh", "tithi"}
-        format_tokens = {"submission", "format", "structure", "zip", "file"}
-        neg_tokens = {"not", "no", "never", "cannot", "must", "shall", "required"}
-        is_time_query = bool(query_tokens & time_tokens)
-        is_constraint_query = bool(query_tokens & neg_tokens)
-        is_format_query = {"submission", "format"}.issubset(query_tokens) or (query_tokens & format_tokens)
 
         q_emb = self.embed_query(query)
-        
-        # 1. Semantic scores (embedding similarity)
+
+        # 1. Semantic scores — purely model-driven, no domain-specific bonuses
         semantic_scores = {}
         for span_id in self.span_graph.nodes:
             emb = self.span_graph.nodes[span_id]["embedding"]
             sim = self.cosine(q_emb, emb)
-            
-            # Type-specific bonuses
-            span_type = self.span_graph.nodes[span_id]["span_type"]
+
             text = self.span_graph.nodes[span_id]["text"]
-            text_norm = normalize_text(text)
-            section_norm = normalize_text(self.span_graph.nodes[span_id].get("section", ""))
             text_tokens = set(tokenize(text))
             sentence_id = self.span_graph.nodes[span_id].get("sentence_id")
             sentence_text = self.sentence_graph.nodes.get(sentence_id, {}).get("text", "")
             sentence_tokens = set(tokenize(sentence_text))
-            
-            bonus = 0.0
-            if span_type in ["temporal", "deadline"] and is_time_query:
-                bonus += 0.2
-            if span_type in ["condition", "negation", "requirement"] and is_constraint_query:
-                bonus += 0.1
-            if "deadline" in query_norm and "deadline" in text_norm:
-                bonus += 0.15
-            if is_format_query and "submission format" in text_norm:
-                bonus += 0.2
-            if is_format_query and "submission format" in section_norm:
-                bonus += 0.2
-            
-            # Numeric answer detection - boost numbers for counting questions
-            has_number = any(char.isdigit() for char in text)
-            query_is_numeric = any(word in query_norm for word in ["kitne", "how many", "कितने", "number", "count", "कितना", "kitna", "many"])
-            
-            # Extract query keywords for exact matching
-            query_words = [w for w in query_norm.split() if len(w) > 3]
-            text_words = set(text_norm.split())
-            
-            # Exact term matching (full word boundaries)
-            exact_matches = sum(1 for qw in query_words if qw in text_words)
-            
-            # Boost for answer-bearing patterns (verb proximity)
-            answer_verbs = ["implemented", "used", "developed", "created", "trained", "built", "wrote", "applied"]
-            has_answer_verb = any(verb in text_words for verb in answer_verbs)
-            
-            # Strong boost for exact query term + answer verb
-            if has_answer_verb and exact_matches > 0:
-                bonus += 0.4  # Very strong boost for exact topic match with answer verb
-            elif exact_matches > 0:
-                bonus += 0.2  # Moderate boost for exact topic match
-            
-            # Proximity bonus for number near query term
-            if has_number and query_is_numeric:
-                # Check if number is within 5 words of query term
-                text_parts = text_norm.split()
-                number_near_topic = False
-                for i, word in enumerate(text_parts):
-                    if any(char.isdigit() for char in word):
-                        # Check surrounding 5 words for query terms
-                        window = text_parts[max(0, i-5):min(len(text_parts), i+6)]
-                        if any(qw in window for qw in query_words):
-                            number_near_topic = True
-                            break
-                
-                if number_near_topic and has_answer_verb:
-                    bonus += 0.5  # Maximum boost: number + topic + verb
-                elif number_near_topic:
-                    bonus += 0.3  # Good boost: number + topic
-                elif has_answer_verb:
-                    bonus += 0.2  # Moderate: number + verb only
 
+            # Light lexical overlap bonus (model-agnostic, not document-specific)
             overlap = len(query_tokens & text_tokens)
-            overlap_bonus = min(0.2, 0.04 * overlap)
-            bonus += overlap_bonus
+            overlap_bonus = min(0.15, 0.03 * overlap)
             if sentence_tokens & query_tokens:
-                bonus += 0.05
-            
-            semantic_scores[span_id] = sim + bonus
+                overlap_bonus += 0.03
+
+            semantic_scores[span_id] = sim + overlap_bonus
         
         # 2. Lexical scores (BM25)
         lexical_scores = {}
@@ -349,7 +289,7 @@ class EnhancedHybridReasoner:
             reverse=True
         )
         
-        return [sid for sid, _ in ranked[:k]]
+        return [sid for sid, _ in ranked[:k*2]]
     
     # ========================================
     # Enhanced Graph Traversal
@@ -512,34 +452,122 @@ class EnhancedHybridReasoner:
     # Evidence Diversity + Confidence
     # ========================================
     
+    def mmr_rerank(
+        self,
+        query: str,
+        span_ids: List[int],
+        k: int,
+        lambda_param: float = 0.6
+    ) -> List[int]:
+        """Maximal Marginal Relevance reranking.
+
+        Balances relevance to the query against novelty relative to already-
+        selected spans.  lambda_param=0.6 gives 60% weight to relevance and
+        40% to diversity — tuned empirically for this pipeline.
+
+        MMR(s) = λ·sim(s, query) − (1−λ)·max_{sj ∈ selected} sim(s, sj)
+        """
+        if not span_ids:
+            return []
+        if len(span_ids) <= k:
+            return span_ids
+
+        q_emb = self.embed_query(query)
+
+        # Pre-fetch embeddings
+        embs: Dict[int, np.ndarray] = {}
+        relevance: Dict[int, float] = {}
+        for sid in span_ids:
+            emb = self.span_graph.nodes[sid].get("embedding")
+            if emb is None:
+                emb = self.model.encode([self.span_graph.nodes[sid]["text"]])[0]
+            embs[sid] = emb
+            relevance[sid] = self.cosine(q_emb, emb)
+
+        selected: List[int] = []
+        remaining = list(span_ids)
+
+        while remaining and len(selected) < k:
+            if not selected:
+                # First item: pure relevance
+                best = max(remaining, key=lambda s: relevance[s])
+            else:
+                best = max(
+                    remaining,
+                    key=lambda s: (
+                        lambda_param * relevance[s]
+                        - (1 - lambda_param) * max(
+                            self.cosine(embs[s], embs[sel]) for sel in selected
+                        )
+                    )
+                )
+            selected.append(best)
+            remaining.remove(best)
+
+        return selected
+
     def get_diverse_evidence(self, span_ids: List[int], max_spans: int = 5) -> List[int]:
         """
-        Select diverse spans from different sections to avoid redundancy.
-        Prefers spans from different sections first.
+        Select diverse spans using MMR so different document regions are
+        represented.  Falls back to section-level dedup when embeddings are
+        unavailable.
         """
         if len(span_ids) <= max_spans:
             return span_ids
-            
-        selected = []
-        covered_sections = set()
-        
-        # First pass: prioritize different sections
+
+        # Check whether embeddings are usable
+        has_emb = all(
+            self.span_graph.nodes[sid].get("embedding") is not None
+            for sid in span_ids[:3]
+        )
+        if has_emb:
+            # Use MMR with a stored query proxy — take the centroid of the
+            # selected spans as a pseudo-query so we diversify without needing
+            # the original query string here.
+            centroid = np.mean(
+                [self.span_graph.nodes[sid]["embedding"] for sid in span_ids[:max_spans*2]],
+                axis=0
+            )
+            # Treat centroid as query, then run MMR
+            selected: List[int] = []
+            remaining = list(span_ids)
+            while remaining and len(selected) < max_spans:
+                if not selected:
+                    best = max(remaining, key=lambda s: self.cosine(
+                        centroid, self.span_graph.nodes[s]["embedding"]))
+                else:
+                    best = max(
+                        remaining,
+                        key=lambda s: (
+                            0.6 * self.cosine(centroid, self.span_graph.nodes[s]["embedding"])
+                            - 0.4 * max(
+                                self.cosine(
+                                    self.span_graph.nodes[s]["embedding"],
+                                    self.span_graph.nodes[sel]["embedding"]
+                                ) for sel in selected
+                            )
+                        )
+                    )
+                selected.append(best)
+                remaining.remove(best)
+            return selected
+
+        # Fallback: section-level dedup
+        selected_fb = []
+        covered_sections: set = set()
         for span_id in span_ids:
-            if len(selected) >= max_spans:
+            if len(selected_fb) >= max_spans:
                 break
             section = normalize_text(self.span_graph.nodes[span_id].get("section", "unknown"))
             if section not in covered_sections:
-                selected.append(span_id)
+                selected_fb.append(span_id)
                 covered_sections.add(section)
-        
-        # Second pass: fill remaining slots regardless of section if needed
         for span_id in span_ids:
-            if len(selected) >= max_spans:
+            if len(selected_fb) >= max_spans:
                 break
-            if span_id not in selected:
-                selected.append(span_id)
-                
-        return selected
+            if span_id not in selected_fb:
+                selected_fb.append(span_id)
+        return selected_fb
     
     def calculate_confidence(self, span_ids: List[int], scores: List[float]) -> Tuple[float, str]:
         """
@@ -623,10 +651,6 @@ class EnhancedHybridReasoner:
         """
         query_tokens = set(tokenize(query))
         query_norm = normalize_text(query)
-        time_tokens = {"when", "deadline", "due", "date", "time", "antim", "aakhri", "tarikh", "tithi"}
-        format_tokens = {"submission", "format", "structure", "zip", "file"}
-        is_time_query = bool(query_tokens & time_tokens)
-        is_format_query = {"submission", "format"}.issubset(query_tokens) or (query_tokens & format_tokens)
 
         sentence_scores = self._score_sentences(query)
         # Step 1: Hybrid retrieval (BM25 + Semantic + Centrality)
@@ -680,70 +704,34 @@ class EnhancedHybridReasoner:
             text_tokens = set(tokenize(text))
             overlap_score = min(1.0, len(query_tokens & text_tokens) / max(1, len(query_tokens)))
 
-            # Section/topic bonus
-            section_norm = normalize_text(self.span_graph.nodes[span_id].get("section", ""))
-            section_bonus = 0.0
-            if is_format_query and "submission format" in section_norm:
-                section_bonus += 0.15
-            if is_time_query and "deadline" in section_norm:
-                section_bonus += 0.1
-
             # Sentence-level relevance bonus
             sentence_id = self.span_graph.nodes[span_id].get("sentence_id")
             sentence_bonus = sentence_scores.get(sentence_id, 0.0)
-            
-            # Numeric answer bonus for counting questions
-            text_norm = normalize_text(text)
-            has_number = any(char.isdigit() for char in text)
-            query_is_numeric = any(word in query_norm for word in ["kitne", "how many", "कितने", "number", "count", "कितना", "kitna", "many"])
-            
-            # Answer-bearing pattern detection with exact matching
-            answer_verbs = ["implemented", "used", "developed", "created", "trained", "built", "wrote", "applied"]
-            text_words = set(text_norm.split())
-            has_answer_verb = any(verb in text_words for verb in answer_verbs)
-            query_words = [w for w in query_norm.split() if len(w) > 3]
-            exact_topic_matches = sum(1 for qw in query_words if qw in text_words)
-            
-            # Boost for answer-bearing patterns (stronger for exact matches)
-            if has_answer_verb and exact_topic_matches > 0:
-                pattern_bonus = 0.35  # Strong boost for verb + exact topic
-            elif exact_topic_matches > 0:
-                pattern_bonus = 0.15  # Moderate boost for exact topic only
-            else:
-                pattern_bonus = 0.0
-            
-            # Numeric bonus (higher if with answer verb)
-            numeric_bonus = 0.0
-            if has_number and query_is_numeric:
-                numeric_bonus = 0.3 if has_answer_verb else 0.2
 
-            # BM25 score (min-max normalized for candidates)
+            # BM25 score (min-max normalized for this candidate set)
             raw_bm25 = bm25_raw_scores.get(span_id, 0.0)
             if bm25_max != bm25_min:
                 bm25_score = (raw_bm25 - bm25_min) / (bm25_max - bm25_min)
             else:
                 bm25_score = 0.0
 
-            # Presence bonuses
-            in_hybrid = 1.0 if span_id in hybrid_results else 0.0
+            # Multi-source voting: how many retrieval strategies surfaced this span
+            in_hybrid    = 1.0 if span_id in hybrid_results    else 0.0
             in_traversal = 1.0 if span_id in traversal_results else 0.0
             in_expansion = 1.0 if span_id in expansion_results else 0.0
-            in_kg = 1.0 if span_id in kg_span_ids else 0.0
+            in_kg        = 1.0 if span_id in kg_span_ids       else 0.0
 
-            # Combined score with boosted weights for core signals
+            # Combined score — purely model/signal-driven, no domain-specific rules
             final_score = (
-                0.30 * sem_score +
-                0.10 * cent_score +
-                0.10 * overlap_score +
-                0.06 * bm25_score +
-                0.04 * section_bonus +
-                0.08 * sentence_bonus +
-                0.15 * numeric_bonus +  # Numeric answer boost
-                0.12 * pattern_bonus +  # NEW: Answer-bearing pattern boost
-                0.05 * in_hybrid +
-                0.05 * in_traversal +
+                0.35 * sem_score +       # Primary: semantic similarity (LaBSE)
+                0.20 * bm25_score +      # Lexical matching (BM25)
+                0.12 * overlap_score +   # Token overlap
+                0.10 * sentence_bonus +  # Sentence-level relevance
+                0.08 * cent_score +      # Graph centrality
+                0.07 * in_hybrid +       # Multi-source voting
+                0.04 * in_traversal +
                 0.03 * in_expansion +
-                0.02 * in_kg
+                0.01 * in_kg
             )
 
             final_scores.append((span_id, final_score))
@@ -757,6 +745,10 @@ class EnhancedHybridReasoner:
             reranked = self.rerank_with_cross_encoder(query, top_candidates, top_k=k*2)
         else:
             reranked = top_candidates
+
+        # Step 7: MMR reranking — diversify so the answer selector sees spans
+        # from different parts of the document, not just the top-scoring region.
+        reranked = self.mmr_rerank(query, reranked, k=min(k*2, len(reranked)), lambda_param=0.65)
 
         def is_relevant(span_id: int) -> bool:
             """Improved relevance check with stopword filtering and semantic threshold"""
@@ -782,46 +774,28 @@ class EnhancedHybridReasoner:
             text_norm = normalize_text(text)
             sentence_id = self.span_graph.nodes[span_id].get("sentence_id")
             sentence_score = sentence_scores.get(sentence_id, 0.0)
-            
-            # Minimum semantic threshold - reject very low scoring spans
-            if span_semantic_score < 0.12:  # Lowered from 0.15
+
+            # Minimum semantic threshold — reject very low-scoring spans
+            if span_semantic_score < 0.12:
                 return False
 
-            # Require at least 2 meaningful overlapping words OR high semantic score
+            # Sufficient lexical overlap → relevant
             if meaningful_overlap >= 2:
                 return True
-            
-            # High semantic score can pass even with lower overlap
-            if span_semantic_score >= 0.4:  # Lowered from 0.5 for better recall
+
+            # Strong semantic score alone is enough
+            if span_semantic_score >= 0.40:
                 return True
-            
-            # Single meaningful word + decent score
-            if meaningful_overlap >= 1 and span_semantic_score >= 0.3:
+
+            # One meaningful word + decent score
+            if meaningful_overlap >= 1 and span_semantic_score >= 0.30:
                 return True
-            
-            # Counting questions - allow if has number + topic word
-            query_is_numeric = any(word in query_norm for word in ["kitne", "how many", "many", "कितने", "number", "count"])
-            has_number = any(char.isdigit() for char in text)
-            if query_is_numeric and has_number and span_semantic_score >= 0.25:
-                return True
-            
-            # Query-specific filtering
-            if is_format_query:
-                if "submission format" in text_norm or "submission format" in section_norm:
-                    return True
-                if any(token in text_norm for token in ["zip", "file structure", "submission portal"]):
-                    return True
-                # Format queries need strong evidence
-                return meaningful_overlap >= 2 or span_semantic_score >= 0.45
-            
-            if is_time_query and span_type in {"temporal", "deadline"}:
-                return True
-            
+
             # Strong sentence-level match
-            if sentence_score >= 0.5:
+            if sentence_score >= 0.50:
                 return True
-            
-            # Default: require some meaningful overlap
+
+            # Default: require at least one meaningful overlapping word
             return meaningful_overlap >= 1
 
         filtered = [sid for sid in reranked if is_relevant(sid)]

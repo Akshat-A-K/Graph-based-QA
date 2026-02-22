@@ -14,10 +14,11 @@ matplotlib.use('Agg')  # Non-interactive backend
 class DocumentReasoningGraph:
     def __init__(
         self,
-        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        # multi-qa-mpnet: trained on 215M QA pairs for asymmetric question→passage retrieval
+        model_name="sentence-transformers/multi-qa-mpnet-base-dot-v1",
         enable_model_ner: bool = False
     ):
-        print("🚀 Loading advanced DRG model...")
+        print("Loading DRG model...")
         self.model = get_sentence_transformer(model_name)
         self.graph = nx.DiGraph()  # Use directed graph for better reasoning
         self.tfidf_vectorizer = TfidfVectorizer(max_features=100, stop_words='english')
