@@ -18,6 +18,7 @@ from parser.span_extractor import SpanExtractor
 from parser.span_graph import SpanGraph
 from parser.kg_builder import KnowledgeGraphBuilder
 from parser.enhanced_reasoner import EnhancedHybridReasoner
+from parser.answer_selector import select_answer
 
 
 def test_qa_system(pdf_path, questions):
@@ -97,11 +98,14 @@ def test_qa_system(pdf_path, questions):
         
         if final_spans:
             print(f"   Retrieved {len(final_spans)} spans")
-            # Show top answer
-            top_span_id = final_spans[0]
-            if top_span_id in span_graph_builder.graph.nodes:
-                text = span_graph_builder.graph.nodes[top_span_id]['text']
-                print(f"   Answer: {text[:150]}...")
+            answer, _, _, _ = select_answer(
+                results,
+                span_graph_builder,
+                question,
+                reasoner=reasoner,
+                max_length=200
+            )
+            print(f"   Answer: {answer}")
         else:
             print("   No answer found")
     

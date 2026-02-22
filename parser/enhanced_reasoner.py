@@ -10,7 +10,8 @@ Enhanced Hybrid Reasoner with Advanced Retrieval:
 
 import numpy as np
 import networkx as nx
-from sentence_transformers import SentenceTransformer, CrossEncoder
+from sentence_transformers import CrossEncoder
+from .model_cache import get_sentence_transformer
 from typing import List, Dict, Tuple, Set
 
 # NLTK stopwords
@@ -49,14 +50,14 @@ class EnhancedHybridReasoner:
         sentence_graph: nx.Graph,
         span_graph: nx.Graph,
         knowledge_graph: Dict,
-        model_name="sentence-transformers/LaBSE",
-        use_cross_encoder=True
+        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        use_cross_encoder=False
     ):
         self.sentence_graph = sentence_graph
         self.span_graph = span_graph
         self.kg = knowledge_graph
         print(f"🌍 Loading multilingual model: {model_name}")
-        self.model = SentenceTransformer(model_name)
+        self.model = get_sentence_transformer(model_name)
         print("✓ Multilingual embeddings ready (supports 50+ languages including Hindi/Hinglish)")
         
         # Advanced components
@@ -72,7 +73,12 @@ class EnhancedHybridReasoner:
         if use_cross_encoder:
             # Use same multilingual model for cross-encoding to save memory
             print("✓ Using unified transformer for both embedding and re-ranking")
-            self.cross_encoder = CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1')
+            try:
+                self.cross_encoder = CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1')
+            except Exception:
+                self.cross_encoder = None
+                self.use_cross_encoder = False
+                print("⚠️  Cross-encoder disabled (model load failed).")
         
         # Stopwords for better filtering
         self.stopwords = STOP_WORDS

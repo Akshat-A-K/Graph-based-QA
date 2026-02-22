@@ -19,6 +19,7 @@ from parser.span_graph import SpanGraph
 from parser.kg_builder import KnowledgeGraphBuilder
 from parser.enhanced_reasoner import EnhancedHybridReasoner
 from parser.advanced_retrieval import normalize_text, tokenize
+from parser.answer_selector import select_answer
 
 
 # Page config
@@ -95,8 +96,8 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
             sentence_graph=drg.graph,
             span_graph=span_graph_builder.graph,
             knowledge_graph=kg_data,
-            model_name="sentence-transformers/LaBSE",
-            use_cross_encoder=True
+            model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            use_cross_encoder=False
         )
         
         return {
@@ -115,90 +116,14 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
 
 
 def extract_answer_text(results, span_graph, query, reasoner=None, max_length=300):
-    """
-    Extract readable answer using model ranking scores and sentence context.
-    Much more accurate than simple overlap scoring.
-    """
-    import re
-    
-    final_spans = results.get('final_spans', [])
-    
-    if not final_spans:
-        return "No answer found", [], 0.0, "Low ✗"
-    
-    # Get the span scores from results for proper ranking
-    span_scores = results.get('span_scores', {})
-    
-    # Sort spans by their actual model scores (not simple overlap)
-    ranked_spans = []
-    for span_id in final_spans[:15]:  # Increased from 10 to get better candidates
-        if span_id in span_graph.graph.nodes:
-            score = span_scores.get(span_id, 0.0)
-            text = span_graph.graph.nodes[span_id]['text'].strip()
-            sentence_id = span_graph.graph.nodes[span_id].get('sentence_id')
-            span_type = span_graph.graph.nodes[span_id].get('span_type', '')
-            
-            # Boost score for sentence-type spans (more complete)
-            if span_type == 'sentence':
-                score = score * 1.1
-            
-            ranked_spans.append((span_id, text, score, sentence_id, span_type))
-    
-    if not ranked_spans:
-        return "No answer found", [], 0.0, "Low ✗"
-    
-    # Sort by boosted model score (highest first)
-    ranked_spans.sort(key=lambda x: x[2], reverse=True)
-    
-    # Get best answer with sentence context for readability
-    best_span_id, best_text, best_score, best_sentence_id, best_span_type = ranked_spans[0]
-    
-    # Prioritize sentence-type spans for better readability
-    if best_span_type == 'sentence' or len(best_text.strip()) >= 60:
-        best_answer = best_text
-    elif best_sentence_id is not None and best_sentence_id in reasoner.sentence_graph.nodes:
-        # Use full sentence for context
-        sentence_text = reasoner.sentence_graph.nodes[best_sentence_id]['text']
-        if len(sentence_text) < max_length * 1.2:
-            best_answer = sentence_text
-        else:
-            # Sentence too long, keep the span
-            best_answer = best_text
-    else:
-        best_answer = best_text
-    
-    # Clean up answer
-    best_answer = re.sub(r'\s+', ' ', best_answer).strip()
-    
-    # Collect ONLY highly relevant evidence spans (top 3 with high scores)
-    evidence_texts = []
-    for _, text, score, _, _ in ranked_spans[:5]:
-        # Only show evidence with score >= 60% of best score
-        if score >= best_score * 0.6:
-            evidence_texts.append(text)
-        if len(evidence_texts) >= 3:  # Max 3 evidence spans
-            break
-    
-    # Validate answer against evidence
-    if reasoner:
-        is_valid, coverage = reasoner.verify_answer_support(best_answer, evidence_texts)
-    else:
-        is_valid, coverage = True, 0.7
-    
-    # Truncate if too long
-    if len(best_answer) > max_length:
-        best_answer = best_answer[:max_length]
-        last_period = max(best_answer.rfind('.'), best_answer.rfind('।'))
-        if last_period > max_length * 0.6:
-            best_answer = best_answer[:last_period + 1]
-        else:
-            best_answer = best_answer.rsplit(' ', 1)[0] + '...'
-    
-    # Get confidence from results
-    confidence = results.get('confidence', 0.5)
-    confidence_label = results.get('confidence_label', 'Medium ◐')
-    
-    return best_answer, evidence_texts, confidence, confidence_label
+    """Extract readable answer using shared selector logic."""
+    return select_answer(
+        results=results,
+        span_graph=span_graph,
+        query=query,
+        reasoner=reasoner,
+        max_length=max_length
+    )
 
 
 # Sidebar - PDF Upload

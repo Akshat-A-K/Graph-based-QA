@@ -5,7 +5,7 @@ Extracts meaningful text spans (phrases, clauses) beyond sentence boundaries.
 
 import re
 from typing import List, Dict, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -19,12 +19,28 @@ class Span:
     page: int
     section: str
     sentence_id: int
+    entities: List[str] = field(default_factory=list)
 
 
 class SpanExtractor:
     """Extract fine-grained spans from sentences."""
     
-    def __init__(self):
+    def __init__(self, ner_model: str = "Davlan/bert-base-multilingual-cased-ner-hrl"):
+        self.ner_model = ner_model
+        self.ner_pipeline = None
+        self.use_ner = True
+
+        try:
+            from transformers import pipeline
+            self.ner_pipeline = pipeline(
+                "ner",
+                model=self.ner_model,
+                aggregation_strategy="simple"
+            )
+        except Exception:
+            self.ner_pipeline = None
+            self.use_ner = False
+
         # Patterns for clause boundaries (more conservative to avoid over-splitting)
         self.clause_markers = [
             r';\s+',
@@ -81,42 +97,89 @@ class SpanExtractor:
             span_type="sentence",
             page=page,
             section=section,
-            sentence_id=sentence_id
+            sentence_id=sentence_id,
+            entities=[]
         ))
         span_id += 1
         
-        # 2. Extract important phrases (dates, conditions, negations, etc.)
+        # 2. Extract entities using model-based NER (preferred)
         extracted_positions = set()
-        for pattern in self.important_patterns:
-            matches = re.finditer(pattern, sentence, re.IGNORECASE)
-            for match in matches:
-                phrase = match.group(0).strip()
-                if len(phrase) > 10:  # Minimum phrase length for quality
-                    # Determine phrase type
-                    phrase_type = self._classify_phrase(phrase)
-                    
-                    # Check for overlap with existing spans to avoid duplicates
-                    overlap = False
-                    for start, end in extracted_positions:
-                        if not (match.end() <= start or match.start() >= end):
-                            overlap = True
-                            break
-                    
-                    if not overlap:
-                        spans.append(Span(
-                            span_id=span_id,
-                            text=phrase,
-                            start_char=match.start(),
-                            end_char=match.end(),
-                            span_type=phrase_type,
-                            page=page,
-                            section=section,
-                            sentence_id=sentence_id
-                        ))
-                        extracted_positions.add((match.start(), match.end()))
-                        span_id += 1
+        ner_entities = []
+
+        if self.use_ner and self.ner_pipeline is not None:
+            try:
+                ner_results = self.ner_pipeline(sentence)
+            except Exception:
+                ner_results = []
+
+            for ent in ner_results:
+                start = int(ent.get("start", 0))
+                end = int(ent.get("end", 0))
+                label = str(ent.get("entity_group", "ENTITY"))
+                text = sentence[start:end].strip()
+
+                if not text or end <= start:
+                    continue
+
+                # Avoid overlaps with existing extracted spans
+                overlap = False
+                for s, e in extracted_positions:
+                    if not (end <= s or start >= e):
+                        overlap = True
+                        break
+
+                if overlap:
+                    continue
+
+                spans.append(Span(
+                    span_id=span_id,
+                    text=text,
+                    start_char=start,
+                    end_char=end,
+                    span_type=f"ner:{label}",
+                    page=page,
+                    section=section,
+                    sentence_id=sentence_id,
+                    entities=[text.lower()]
+                ))
+                extracted_positions.add((start, end))
+                ner_entities.append(text.lower())
+                span_id += 1
+
+        # 3. Extract important phrases (regex fallback only)
+        if not extracted_positions:
+            extracted_positions = set()
+            for pattern in self.important_patterns:
+                matches = re.finditer(pattern, sentence, re.IGNORECASE)
+                for match in matches:
+                    phrase = match.group(0).strip()
+                    if len(phrase) > 10:  # Minimum phrase length for quality
+                        # Determine phrase type
+                        phrase_type = self._classify_phrase(phrase)
+                        
+                        # Check for overlap with existing spans to avoid duplicates
+                        overlap = False
+                        for start, end in extracted_positions:
+                            if not (match.end() <= start or match.start() >= end):
+                                overlap = True
+                                break
+                        
+                        if not overlap:
+                            spans.append(Span(
+                                span_id=span_id,
+                                text=phrase,
+                                start_char=match.start(),
+                                end_char=match.end(),
+                                span_type=phrase_type,
+                                page=page,
+                                section=section,
+                                sentence_id=sentence_id,
+                                entities=[]
+                            ))
+                            extracted_positions.add((match.start(), match.end()))
+                            span_id += 1
         
-        # 3. Only split into clauses if sentence is very long (>150 chars)
+        # 4. Only split into clauses if sentence is very long (>150 chars)
         if len(sentence) > 150:
             clauses = self._split_into_clauses(sentence)
             offset = 0
@@ -138,11 +201,16 @@ class SpanExtractor:
                             span_type="clause",
                             page=page,
                             section=section,
-                            sentence_id=sentence_id
+                            sentence_id=sentence_id,
+                            entities=[]
                         ))
                         span_id += 1
                 offset += len(clause)
         
+        # 5. Attach sentence-level entity list to the full sentence span
+        if ner_entities:
+            spans[0].entities = sorted(set(ner_entities))
+
         return spans
     
     def _split_into_clauses(self, sentence: str) -> List[str]:
@@ -204,7 +272,8 @@ class SpanExtractor:
                     "section": span.section,
                     "sentence_id": span.sentence_id,
                     "start_char": span.start_char,
-                    "end_char": span.end_char
+                    "end_char": span.end_char,
+                    "entities": span.entities
                 })
                 span_id += 1
         

@@ -38,6 +38,32 @@ class KnowledgeGraphBuilder:
     
     def __init__(self):
         print("🧠 Initializing Enhanced Knowledge Graph Builder...")
+
+        self.ner_pipeline = None
+        self.rebel_pipeline = None
+        self.use_ner = True
+        self.use_rebel = True
+
+        try:
+            from transformers import pipeline
+            self.ner_pipeline = pipeline(
+                "ner",
+                model="Davlan/bert-base-multilingual-cased-ner-hrl",
+                aggregation_strategy="simple"
+            )
+        except Exception:
+            self.ner_pipeline = None
+            self.use_ner = False
+
+        try:
+            from transformers import pipeline
+            self.rebel_pipeline = pipeline(
+                "text2text-generation",
+                model="Babelscape/rebel-large"
+            )
+        except Exception:
+            self.rebel_pipeline = None
+            self.use_rebel = False
         
         # Enhanced entity extraction patterns with better coverage
         self.entity_patterns = {
@@ -114,6 +140,40 @@ class KnowledgeGraphBuilder:
         entities = []
         entity_id = 0
         seen_entities = set()  # avoid duplicates
+
+        if self.use_ner and self.ner_pipeline is not None:
+            for span in spans:
+                text = span["text"]
+                span_id = span["span_id"]
+                try:
+                    ner_results = self.ner_pipeline(text)
+                except Exception:
+                    ner_results = []
+
+                for ent in ner_results:
+                    ent_text = str(ent.get("word", "")).strip()
+                    ent_label = str(ent.get("entity_group", "ENTITY"))
+                    if not ent_text:
+                        continue
+                    entity_key = (ent_text.lower(), ent_label)
+                    if entity_key not in seen_entities:
+                        seen_entities.add(entity_key)
+                        entities.append(Entity(
+                            entity_id=entity_id,
+                            text=ent_text,
+                            entity_type=ent_label,
+                            span_ids=[span_id]
+                        ))
+                        entity_id += 1
+                    else:
+                        for entity in entities:
+                            if entity.text.lower() == ent_text.lower() and entity.entity_type == ent_label:
+                                if span_id not in entity.span_ids:
+                                    entity.span_ids.append(span_id)
+                                break
+
+            if entities:
+                return entities
         
         for span in spans:
             text = span["text"]
@@ -147,6 +207,102 @@ class KnowledgeGraphBuilder:
                                     break
         
         return entities
+
+    def _parse_rebel_output(self, text: str) -> List[Dict]:
+        """Parse REBEL model output into triplets."""
+        triplets = []
+        if not text:
+            return triplets
+
+        parts = text.split("<triplet>")
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+
+            subj = ""
+            obj = ""
+            rel = ""
+            tokens = part.split("<subj>")
+            if len(tokens) < 2:
+                continue
+            after_subj = tokens[1]
+            subj = after_subj.split("<obj>")[0].strip()
+            after_obj = after_subj.split("<obj>")[-1]
+            obj = after_obj.split("<rel>")[0].strip()
+            rel = after_obj.split("<rel>")[-1].strip()
+
+            if subj and obj and rel:
+                triplets.append({"subject": subj, "object": obj, "relation": rel})
+
+        return triplets
+
+    def _extract_relations_model(self, entities: List[Entity], spans: List[Dict]) -> List[Relation]:
+        """Extract relations using REBEL model output."""
+        relations = []
+        relation_id = 0
+
+        entity_by_key = { (e.text.lower(), e.entity_type): e for e in entities }
+        entity_by_text = { e.text.lower(): e for e in entities }
+
+        for span in spans:
+            text = span["text"]
+            try:
+                outputs = self.rebel_pipeline(text, max_length=256, truncation=True)
+            except Exception:
+                outputs = []
+
+            if not outputs:
+                continue
+
+            generated = outputs[0].get("generated_text", "")
+            triplets = self._parse_rebel_output(generated)
+            if not triplets:
+                continue
+
+            for triplet in triplets:
+                subj_text = triplet["subject"].strip()
+                obj_text = triplet["object"].strip()
+                rel_text = triplet["relation"].strip()
+
+                if not subj_text or not obj_text or not rel_text:
+                    continue
+
+                subj_key = subj_text.lower()
+                obj_key = obj_text.lower()
+
+                subj_entity = entity_by_text.get(subj_key)
+                if subj_entity is None:
+                    subj_entity = Entity(
+                        entity_id=len(entities),
+                        text=subj_text,
+                        entity_type="ENTITY",
+                        span_ids=[span["span_id"]]
+                    )
+                    entities.append(subj_entity)
+                    entity_by_text[subj_key] = subj_entity
+
+                obj_entity = entity_by_text.get(obj_key)
+                if obj_entity is None:
+                    obj_entity = Entity(
+                        entity_id=len(entities),
+                        text=obj_text,
+                        entity_type="ENTITY",
+                        span_ids=[span["span_id"]]
+                    )
+                    entities.append(obj_entity)
+                    entity_by_text[obj_key] = obj_entity
+
+                relations.append(Relation(
+                    relation_id=relation_id,
+                    source_entity_id=subj_entity.entity_id,
+                    target_entity_id=obj_entity.entity_id,
+                    relation_type=rel_text.upper().replace(" ", "_"),
+                    confidence=0.7
+                ))
+                relation_id += 1
+
+        return relations
     
     def extract_relations(
         self, 
@@ -154,6 +310,11 @@ class KnowledgeGraphBuilder:
         spans: List[Dict]
     ) -> List[Relation]:
         """Extract relations between entities based on co-occurrence and patterns."""
+        if self.use_rebel and self.rebel_pipeline is not None:
+            relations = self._extract_relations_model(entities, spans)
+            if relations:
+                return relations
+
         relations = []
         relation_id = 0
         

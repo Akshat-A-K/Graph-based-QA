@@ -7,7 +7,7 @@ import json
 import networkx as nx
 import numpy as np
 from tqdm import tqdm
-from sentence_transformers import SentenceTransformer
+from .model_cache import get_sentence_transformer
 from sklearn.metrics.pairwise import cosine_similarity
 from collections import Counter, defaultdict
 from typing import List, Dict
@@ -19,9 +19,9 @@ matplotlib.use('Agg')  # Non-interactive backend
 class SpanGraph:
     """Build and manage enhanced span-level document graph."""
     
-    def __init__(self, model_name="sentence-transformers/LaBSE"):
+    def __init__(self, model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"):
         print("🔗 Initializing Enhanced Span Graph Builder...")
-        self.model = SentenceTransformer(model_name)
+        self.model = get_sentence_transformer(model_name)
         self.graph = nx.DiGraph()  # Directed for better reasoning
         
         # Enhanced discourse markers
@@ -45,7 +45,8 @@ class SpanGraph:
                 span_type=span["span_type"],
                 page=span["page"],
                 section=span["section"],
-                sentence_id=span["sentence_id"]
+                sentence_id=span["sentence_id"],
+                entities=span.get("entities", [])
             )
     
     def compute_embeddings(self):
@@ -182,6 +183,31 @@ class SpanGraph:
                                 edge_count += 1
         
         print(f"  ✓ Added {edge_count} discourse edges")
+
+    def add_entity_overlap_edges(self):
+        """Connect spans that share extracted entities."""
+        print("🔗 Adding entity overlap edges...")
+        entity_map = defaultdict(list)
+
+        for node_id in self.graph.nodes:
+            entities = self.graph.nodes[node_id].get("entities", [])
+            for ent in entities:
+                key = str(ent).strip().lower()
+                if key:
+                    entity_map[key].append(node_id)
+
+        edge_count = 0
+        for ent, node_list in entity_map.items():
+            if len(node_list) < 2:
+                continue
+            for i in range(len(node_list)):
+                for j in range(i + 1, len(node_list)):
+                    n1, n2 = node_list[i], node_list[j]
+                    self.graph.add_edge(n1, n2, type="entity", weight=0.8, entity=ent)
+                    self.graph.add_edge(n2, n1, type="entity", weight=0.8, entity=ent)
+                    edge_count += 1
+
+        print(f"  ✓ Added {edge_count} entity edge pairs")
     
     def compute_graph_metrics(self):
         """Compute centrality and importance metrics for spans."""
@@ -292,6 +318,7 @@ class SpanGraph:
         self.add_structural_edges()
         self.add_semantic_edges()
         self.add_discourse_edges()
+        self.add_entity_overlap_edges()
         self.compute_graph_metrics()
         
         print("\n✅ Enhanced Span Graph built successfully!")

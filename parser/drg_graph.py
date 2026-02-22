@@ -1,7 +1,7 @@
 import networkx as nx
 import numpy as np
 from tqdm import tqdm
-from sentence_transformers import SentenceTransformer
+from .model_cache import get_sentence_transformer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
 from collections import Counter, defaultdict
@@ -12,12 +12,35 @@ matplotlib.use('Agg')  # Non-interactive backend
 
 
 class DocumentReasoningGraph:
-    def __init__(self, model_name="sentence-transformers/LaBSE"):
+    def __init__(
+        self,
+        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        enable_model_ner: bool = False
+    ):
         print("🚀 Loading advanced DRG model...")
-        self.model = SentenceTransformer(model_name)
+        self.model = get_sentence_transformer(model_name)
         self.graph = nx.DiGraph()  # Use directed graph for better reasoning
         self.tfidf_vectorizer = TfidfVectorizer(max_features=100, stop_words='english')
         self.entity_map = defaultdict(list)  # Maps entities to node IDs
+        self.ner_pipeline = None
+        self.use_ner = enable_model_ner
+
+    def _get_ner_pipeline(self):
+        if not self.use_ner or self.ner_pipeline is not None:
+            return self.ner_pipeline
+
+        try:
+            from transformers import pipeline
+            self.ner_pipeline = pipeline(
+                "ner",
+                model="Davlan/bert-base-multilingual-cased-ner-hrl",
+                aggregation_strategy="simple"
+            )
+        except Exception:
+            self.ner_pipeline = None
+            self.use_ner = False
+
+        return self.ner_pipeline
 
     # -------------------------
     # STEP 1: add nodes
@@ -153,7 +176,7 @@ class DocumentReasoningGraph:
         """Extract named entities and key terms from sentences"""
         print("🏷️  Extracting entities...")
         
-        # Simple pattern-based entity extraction
+        # Simple pattern-based entity extraction (fallback)
         patterns = [
             (r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b', 'PERSON/ORG'),  # Proper nouns
             (r'\b\d{4}\b', 'YEAR'),  # Years
@@ -165,13 +188,29 @@ class DocumentReasoningGraph:
         for node_id in self.graph.nodes:
             text = self.graph.nodes[node_id]['text']
             entities = []
-            
-            for pattern, entity_type in patterns:
-                matches = re.findall(pattern, text, re.IGNORECASE)
-                for match in matches:
-                    entity_key = f"{entity_type}:{match.lower()}"
+
+            if self.use_ner and self._get_ner_pipeline() is not None:
+                try:
+                    ner_results = self.ner_pipeline(text)
+                except Exception:
+                    ner_results = []
+
+                for ent in ner_results:
+                    ent_text = str(ent.get("word", "")).strip()
+                    ent_label = str(ent.get("entity_group", "ENTITY"))
+                    if not ent_text:
+                        continue
+                    entity_key = f"{ent_label}:{ent_text.lower()}"
                     entities.append(entity_key)
                     self.entity_map[entity_key].append(node_id)
+
+            if not entities:
+                for pattern, entity_type in patterns:
+                    matches = re.findall(pattern, text, re.IGNORECASE)
+                    for match in matches:
+                        entity_key = f"{entity_type}:{match.lower()}"
+                        entities.append(entity_key)
+                        self.entity_map[entity_key].append(node_id)
             
             self.graph.nodes[node_id]['entities'] = entities
     
