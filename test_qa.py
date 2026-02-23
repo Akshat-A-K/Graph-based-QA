@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from parser.pdf_parser import extract_pages
+from parser.pdf_parser import extract_document_with_tables
 from parser.drg_nodes import build_nodes
 from parser.drg_graph import DocumentReasoningGraph
 from parser.span_extractor import SpanExtractor
@@ -30,7 +30,8 @@ def test_qa_system(pdf_path, questions):
     
     # 1. Extract text from PDF
     print("\n[1/6] Extracting text from PDF...")
-    pages = extract_pages(pdf_path)
+    doc = extract_document_with_tables(pdf_path)
+    pages = doc.get('pages', [])
     if not pages:
         print("❌ Failed to extract text")
         return

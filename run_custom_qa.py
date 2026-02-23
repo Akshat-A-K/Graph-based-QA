@@ -1,8 +1,42 @@
 import sys
+import os
 import gc
+import json
+import time
 import torch
+import numpy as np
+from datetime import datetime
 
-from parser.pdf_parser import extract_pages
+
+class _NumpyEncoder(json.JSONEncoder):
+    """Serialize numpy scalar types (float32, int64, …) to native Python."""
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
+# Parse simple CLI flags for OCR/tables before importing parser modules
+ENABLE_OCR_FLAG = False
+ENABLE_TABLES_FLAG = None
+if "--enable-ocr" in sys.argv:
+    ENABLE_OCR_FLAG = True
+    sys.argv.remove("--enable-ocr")
+
+if "--disable-tables" in sys.argv:
+    ENABLE_TABLES_FLAG = False
+    sys.argv.remove("--disable-tables")
+
+if ENABLE_OCR_FLAG:
+    os.environ["PDF_ENABLE_OCR"] = "true"
+
+if ENABLE_TABLES_FLAG is False:
+    os.environ["PDF_ENABLE_TABLES"] = "false"
+
+from parser.pdf_parser import extract_document_with_tables
 from parser.drg_nodes import build_nodes
 from parser.drg_graph import DocumentReasoningGraph
 from parser.span_extractor import SpanExtractor
@@ -11,29 +45,41 @@ from parser.kg_builder import KnowledgeGraphBuilder
 from parser.enhanced_reasoner import EnhancedHybridReasoner
 from parser.answer_selector import select_answer
 
+# Single embedding model used consistently across all graph components
+EMBED_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+
+
+def _output_path(pdf_path: str, ext: str) -> str:
+    base = os.path.splitext(os.path.basename(pdf_path))[0]
+    out_dir = os.path.join(os.path.dirname(os.path.abspath(pdf_path)))
+    return os.path.join(out_dir, f"{base}_qa_output.{ext}")
+
 
 def main():
     # Force garbage collection before starting
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-    
+
     if len(sys.argv) > 1:
         pdf_path = sys.argv[1]
     else:
-        pdf_path = r"/home/gaurav/inlp_project/OM/Graph-based-QA/test.pdf"
-    
+        pdf_path = r"/home/gaurav/inlp_project/OM/Graph-based-QA/temp_Rsearch_pepar.pdf"
+
+    pipeline_start = time.time()
+
     print(f"📄 Processing PDF: {pdf_path}")
-    pages = extract_pages(pdf_path)
+    doc = extract_document_with_tables(pdf_path)
+    pages = doc.get('pages', [])
     sentence_nodes = build_nodes(pages)
 
     print("🚀 Building Document Reasoning Graph...")
-    drg = DocumentReasoningGraph()
+    drg = DocumentReasoningGraph(model_name=EMBED_MODEL)
     drg.add_nodes(sentence_nodes)
     drg.compute_embeddings()
     drg.add_structural_edges()
     drg.add_semantic_edges(threshold=0.75)
-    
+
     # Clear memory after DRG
     gc.collect()
 
@@ -42,7 +88,7 @@ def main():
     spans = span_extractor.extract_spans_from_nodes(sentence_nodes)
 
     print("🕸️ Building Span Graph...")
-    span_graph_builder = SpanGraph()
+    span_graph_builder = SpanGraph(model_name=EMBED_MODEL)
     span_graph_builder.add_nodes(spans)
     span_graph_builder.compute_embeddings()
     span_graph_builder.add_structural_edges()
@@ -50,14 +96,14 @@ def main():
     span_graph_builder.add_discourse_edges()
     span_graph_builder.add_entity_overlap_edges()
     span_graph_builder.compute_graph_metrics()
-    
+
     # Clear memory after Span Graph
     gc.collect()
 
     print("🧠 Building Knowledge Graph...")
     kg_builder = KnowledgeGraphBuilder()
-    kg_data = kg_builder.build_kg(spans)
-    
+    kg_data = kg_builder.build_kg(spans, tables=doc.get('tables', []))
+
     # Clear memory after KG
     gc.collect()
 
@@ -65,10 +111,22 @@ def main():
     reasoner = EnhancedHybridReasoner(
         sentence_graph=drg.graph,
         span_graph=span_graph_builder.graph,
-        knowledge_graph=kg_data
+        knowledge_graph=kg_data,
+        model_name=EMBED_MODEL,
     )
 
-    if "a2" in pdf_path.lower():
+    # Document-level stats (for report)
+    doc_stats = {
+        "pdf": os.path.basename(pdf_path),
+        "pages": len(pages),
+        "sentences": drg.graph.number_of_nodes(),
+        "spans": span_graph_builder.graph.number_of_nodes(),
+        "kg_entities": len(kg_data.get("entities", [])),
+    }
+
+    pdf_lower = os.path.basename(pdf_path).lower()
+
+    if "a2" in pdf_lower:
         questions = [
             "What is the deadline for the assignment?",
             "How must the assignment be implemented?",
@@ -91,89 +149,235 @@ def main():
             "What should the MLP input be for a window size C?",
             "What should be included in the report's error analysis?"
         ]
-    elif "test" in pdf_path.lower():
+    elif "test" in pdf_lower:
         questions = [
-            "What is Abdul Kalam's full name?",                                   # Q1
-            "When was Abdul Kalam born?",                                          # Q2
-            "When did Abdul Kalam die?",                                           # Q3
-            "What was Abdul Kalam's profession?",                                  # Q4
-            "From which year to which year did Kalam serve as president of India?",# Q5
-            "Where was Abdul Kalam born?",                                         # Q6
-            "What subjects did Kalam study?",                                      # Q7
-            "Which organisations did Kalam mainly work at as a scientist?",        # Q8
-            "What nickname was Kalam given for his missile work?",                 # Q9
-            "What role did Kalam play in the Pokhran-II nuclear tests?",           # Q10
-            "Which political parties supported Kalam's election as president?",    # Q11
-            "What was Kalam popularly referred to as by the public?",              # Q12
-            "What is India's highest civilian honour that Kalam received?",        # Q13
-            "How did Kalam die and where?",                                        # Q14
-            "How old was Kalam when he died?",                                     # Q15
-            "Where was Kalam buried and with what honours?",                       # Q16
-            "What was Kalam's position among his siblings?",                       # Q17
-            "What was the occupation of Kalam's ancestors?",                       # Q18
-            "What caused the Kalam family business to fail?",                      # Q19
-            "What did Kalam do as a young boy to support his family?",             # Q20
+            "What is Abdul Kalam's full name?",
+            "When was Abdul Kalam born?",
+            "When did Abdul Kalam die?",
+            "What was Abdul Kalam's profession?",
+            "From which year to which year did Kalam serve as president of India?",
+            "Where was Abdul Kalam born?",
+            "What subjects did Kalam study?",
+            "Which organisations did Kalam mainly work at as a scientist?",
+            "What nickname was Kalam given for his missile work?",
+            "What role did Kalam play in the Pokhran-II nuclear tests?",
+            "Which political parties supported Kalam's election as president?",
+            "What was Kalam popularly referred to as by the public?",
+            "What is India's highest civilian honour that Kalam received?",
+            "How did Kalam die and where?",
+            "How old was Kalam when he died?",
+            "Where was Kalam buried and with what honours?",
+            "What was Kalam's position among his siblings?",
+            "What was the occupation of Kalam's ancestors?",
+            "What caused the Kalam family business to fail?",
+            "What did Kalam do as a young boy to support his family?",
+        ]
+    elif any(k in pdf_lower for k in ("rsearch", "pepar", "research", "paper", "eurocall", "kruk", "mobile", "autonomy")):
+        # Medium-level questions covering all types:
+        # Factual | Definitional | Methodological | Inferential |
+        # Comparative | Evaluative | Causal | Process
+        questions = [
+            # ── FACTUAL ────────────────────────────────────────────────────
+            "What is the CEFR proficiency level of the study participants?",
+            "What was the average age of the study participants?",
+            "What percentage of students used mobile devices most frequently in leisure time?",
+            "How many of the participants were in the second year of their BA programme?",
+            "Which mobile device was used most often by participants?",
+
+            # ── DEFINITIONAL / CONCEPTUAL ──────────────────────────────────
+            "What does Holec mean by 'the ability to take charge of one's own learning'?",
+            "What is the difference between ability and willingness in Littlewood's model of autonomy?",
+            "Why does Reinders argue that autonomy is a continuum rather than an either-or concept?",
+            "What does Benson mean when he says autonomy is multidimensional?",
+            "How does social interaction contribute to learner autonomy according to the paper?",
+
+            # ── METHODOLOGICAL ─────────────────────────────────────────────
+            "Why was a semi-structured interview chosen as the data collection instrument?",
+            "How was the interview data transcribed and analyzed?",
+            "What were the two types of analysis applied to the gathered data?",
+            "How did the researcher ensure validity when translating student excerpts?",
+            "What does the paper say about how participants were selected?",
+
+            # ── PROCESS / APPLICATION ──────────────────────────────────────
+            "In which contexts or situations did students most frequently use mobile devices for English learning?",
+            "What specific language skills did students use mobile devices to practice?",
+            "How did students use mobile devices to look up vocabulary?",
+            "What role did mobile apps play in students' autonomous language learning?",
+
+            # ── INFERENTIAL / ANALYTICAL ───────────────────────────────────
+            "Why does the paper suggest that classroom use of mobile devices was more intuitive than planned?",
+            "What gap does the paper imply exists between learner awareness and actual mobile device use?",
+            "How does the study link mobile device usage to the development of learner autonomy?",
+
+            # ── COMPARATIVE ────────────────────────────────────────────────
+            "How does the paper distinguish between formal and informal language learning with mobile devices?",
+            "How does autonomous learning differ from non-autonomous learning according to Benson?",
+
+            # ── EVALUATIVE / CRITICAL ──────────────────────────────────────
+            "What limitations does the author acknowledge in the study?",
+            "What future research directions does the paper suggest?",
+            "How does the paper evaluate the overall results of learners' mobile device engagement?",
+
+            # ── CAUSAL ─────────────────────────────────────────────────────
+            "Why do the authors argue language teachers should prepare learners to use mobile devices effectively?",
+            "What reasons do students give for using mobile devices for English learning in their spare time?",
+            "Why does fostering learner autonomy matter for second language acquisition according to the paper?",
         ]
     else:
         questions = [
-            # --- Early life ---
-            "What was Virat Kohli's father's profession?",           # Q1
-            "Where did Kohli spend his formative years as a child?", # Q2
-            "When did Kohli's father die?",                          # Q3
-            "What is Kohli's mother's name?",                        # Q4
-            "Who are Kohli's siblings?",                             # Q5
-            # --- Youth / U-19 career ---
-            "How many runs did Kohli score in the 2008 U-19 World Cup?",              # Q6
-            "What was Kohli's score in his century at the 2008 U-19 World Cup?",      # Q7
-            "What scholarship did Kohli receive in June 2008?",                       # Q8
-            "When did Kohli make his first-class debut?",                             # Q9
-            # --- International career ---
-            "When did Kohli make his international cricket debut?",                   # Q10
-            "Where did Kohli score his maiden Test century?",                         # Q11
-            "What was Kohli's career-best ODI score?",                                # Q12
-            "How many runs did Kohli score in the 2023 ODI World Cup?",               # Q13
-            "How many runs did Kohli score in the 2014 ICC World Twenty20?",          # Q14
-            "How many runs did Kohli score as Test captain in his first series in Australia?", # Q15
-            # --- Captaincy / rankings ---
-            "In which year did Kohli become the number one ranked Test batsman?",     # Q16
-            "When did Kohli first become number one in ODI batting rankings?",        # Q17
-            "In which tournament did Kohli win the Man of the Tournament award in 2016?", # Q18
-            # --- IPL ---
-            "How much did RCB acquire Kohli for in the 2008 IPL auction?",            # Q19
-            "How much was Kohli retained by RCB for ahead of the 2011 IPL season?",  # Q20
-            # --- Records ---
-            "For how many consecutive years was Kohli named Wisden Leading Cricketer in the World?", # Q21
-            "What record did Kohli set at the 2023 ODI World Cup?",                   # Q22
-            # --- Personal life ---
-            "Who is Kohli's childhood cricket coach?",                                # Q23
-            "Who is Kohli's wife?",                                                   # Q24
-            "What are Kohli's estimated earnings in 2022?",                           # Q25
+            "What is the title or main subject of this document?",
+            "Who are the authors or creators of this document?",
+            "What is the main objective or research question?",
+            "What methodology or approach is described?",
+            "What are the key findings or results?",
+            "What data or evidence is presented?",
+            "What conclusions are drawn?",
+            "What recommendations are made?",
+            "What limitations are mentioned?",
+            "What future work is suggested?",
         ]
 
-    print("Questions and answers:")
+    # -----------------------------------------------------------------------
+    # Run QA and collect results
+    # -----------------------------------------------------------------------
+    qa_records = []
+    sep = "-" * 72
+    print("\n" + "=" * 72)
+    print("  QA RESULTS")
+    print("=" * 72)
+
     for i, question in enumerate(questions, 1):
+        q_start = time.time()
         results = reasoner.enhanced_reasoning(question, k=8)
         final_spans = results.get("final_spans", [])
+
         answer = "No answer found"
+        evidence_spans = []
+        confidence = results.get("confidence", 0.0)
+        confidence_label = results.get("confidence_label", "Low ✗")
+
         if final_spans:
-            answer, _, _, _ = select_answer(
+            answer, evidence_spans, confidence, confidence_label = select_answer(
                 results,
                 span_graph_builder,
                 question,
                 reasoner=reasoner,
                 max_length=220
             )
-        print(f"Q{i}: {question}")
-        print(f"A{i}: {answer}\n")
 
-        # --- Context debug (commented out) ---
-        # if final_spans:
-        #     for rank, span_id in enumerate(final_spans[:5], 1):
-        #         if span_id in span_graph_builder.graph.nodes:
-        #             node = span_graph_builder.graph.nodes[span_id]
-        #             ctx_text = node.get("text", "").strip()
-        #             score = results.get("span_scores", {}).get(span_id, 0.0)
-        #             print(f"  [{rank}] (score={score:.3f}) {ctx_text}")
+        elapsed = time.time() - q_start
+
+        # Console output
+        print(f"\nQ{i:02d}: {question}")
+        print(f"A{i:02d}: {answer}")
+        print(f"     Confidence : {confidence_label}  ({confidence:.2%})")
+        print(f"     Evidence   : {len(evidence_spans)} span(s)   |  "
+              f"Hybrid={len(results.get('hybrid_results', []))}  "
+              f"Traversal={len(results.get('traversal_results', []))}  "
+              f"Expansion={len(results.get('expansion_results', []))}  "
+              f"KG={len(results.get('kg_entities', []))}")
+        print(f"     Time       : {elapsed:.2f}s")
+        if evidence_spans:
+            print(f"     Top evidence: {evidence_spans[0][:120].strip()}...")
+        print(sep)
+
+        qa_records.append({
+            "q_num": i,
+            "question": question,
+            "answer": answer,
+            "confidence": round(confidence, 4),
+            "confidence_label": confidence_label,
+            "time_s": round(elapsed, 3),
+            "evidence_count": len(evidence_spans),
+            "evidence_spans": evidence_spans[:3],
+            "retrieval": {
+                "hybrid": len(results.get("hybrid_results", [])),
+                "traversal": len(results.get("traversal_results", [])),
+                "expansion": len(results.get("expansion_results", [])),
+                "kg_entities": len(results.get("kg_entities", [])),
+            },
+        })
+
+    total_time = time.time() - pipeline_start
+
+    # -----------------------------------------------------------------------
+    # Summary analysis
+    # -----------------------------------------------------------------------
+    answered = [r for r in qa_records if r["answer"] != "No answer found"]
+    avg_conf = sum(r["confidence"] for r in answered) / max(len(answered), 1)
+    high_conf = sum(1 for r in answered if r["confidence"] >= 0.7)
+    med_conf  = sum(1 for r in answered if 0.45 <= r["confidence"] < 0.7)
+    low_conf  = sum(1 for r in answered if r["confidence"] < 0.45)
+    avg_time  = sum(r["time_s"] for r in qa_records) / max(len(qa_records), 1)
+
+    analysis = {
+        "total_questions": len(qa_records),
+        "answered": len(answered),
+        "unanswered": len(qa_records) - len(answered),
+        "answer_rate_pct": round(len(answered) / max(len(qa_records), 1) * 100, 1),
+        "avg_confidence": round(avg_conf, 4),
+        "confidence_distribution": {"high": high_conf, "medium": med_conf, "low": low_conf},
+        "avg_time_per_question_s": round(avg_time, 3),
+        "total_pipeline_time_s": round(total_time, 2),
+    }
+
+    print("\n" + "=" * 72)
+    print("  ANALYSIS SUMMARY")
+    print("=" * 72)
+    print(f"  Total questions : {analysis['total_questions']}")
+    print(f"  Answered        : {analysis['answered']}  ({analysis['answer_rate_pct']}%)")
+    print(f"  Unanswered      : {analysis['unanswered']}")
+    print(f"  Avg confidence  : {analysis['avg_confidence']:.2%}")
+    print(f"  Confidence dist : High={high_conf}  Medium={med_conf}  Low={low_conf}")
+    print(f"  Avg time/Q      : {analysis['avg_time_per_question_s']:.2f}s")
+    print(f"  Total time      : {analysis['total_pipeline_time_s']:.1f}s")
+    print("=" * 72)
+
+    # -----------------------------------------------------------------------
+    # Save outputs
+    # -----------------------------------------------------------------------
+    output = {
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "pdf": os.path.basename(pdf_path),
+        "embed_model": EMBED_MODEL,
+        "document_stats": doc_stats,
+        "analysis": analysis,
+        "qa": qa_records,
+    }
+
+    json_path = _output_path(pdf_path, "json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(output, f, ensure_ascii=False, indent=2, cls=_NumpyEncoder)
+    print(f"\n✅ JSON output saved  → {json_path}")
+
+    # Plain-text report
+    txt_path = _output_path(pdf_path, "txt")
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write(f"QA OUTPUT  —  {os.path.basename(pdf_path)}\n")
+        f.write(f"Generated : {output['generated_at']}\n")
+        f.write(f"Model     : {EMBED_MODEL}\n\n")
+
+        f.write("DOCUMENT STATS\n" + "-" * 40 + "\n")
+        for k, v in doc_stats.items():
+            f.write(f"  {k:<18}: {v}\n")
+        f.write("\n")
+
+        f.write("QA RESULTS\n" + "=" * 72 + "\n")
+        for r in qa_records:
+            f.write(f"\nQ{r['q_num']:02d}: {r['question']}\n")
+            f.write(f"A{r['q_num']:02d}: {r['answer']}\n")
+            f.write(f"    Confidence : {r['confidence_label']}  ({r['confidence']:.2%})\n")
+            f.write(f"    Evidence   : {r['evidence_count']} span(s)\n")
+            f.write(f"    Time       : {r['time_s']}s\n")
+            if r["evidence_spans"]:
+                f.write(f"    Top evid.  : {r['evidence_spans'][0][:120].strip()}...\n")
+            f.write("-" * 72 + "\n")
+
+        f.write("\nANALYSIS SUMMARY\n" + "=" * 72 + "\n")
+        for k, v in analysis.items():
+            f.write(f"  {k:<35}: {v}\n")
+
+    print(f"✅ Text report saved  → {txt_path}\n")
 
 
 if __name__ == "__main__":

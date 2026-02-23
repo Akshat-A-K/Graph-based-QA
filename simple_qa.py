@@ -4,7 +4,7 @@ Only builds essential components.
 """
 import sys
 import gc
-from parser.pdf_parser import extract_pages
+from parser.pdf_parser import extract_document_with_tables
 from parser.drg_nodes import build_nodes
 
 def simple_answer(question, sentence_nodes):
@@ -54,7 +54,8 @@ def main():
         pdf_path = r"c:\Mtech\Sem_2\INLP\Project\Graph-based-QA\text-conversion-1771764622748.pdf"
     
     print(f"📄 Loading PDF: {pdf_path}")
-    pages = extract_pages(pdf_path)
+    doc = extract_document_with_tables(pdf_path)
+    pages = doc.get('pages', [])
     sentence_nodes = build_nodes(pages)
     print(f"✅ Loaded {len(sentence_nodes)} sentences")
     

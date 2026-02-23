@@ -11,7 +11,7 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 import streamlit as st
 import tempfile
 
-from parser.pdf_parser import extract_pages
+from parser.pdf_parser import extract_document_with_tables
 from parser.drg_nodes import build_nodes
 from parser.drg_graph import DocumentReasoningGraph
 from parser.span_extractor import SpanExtractor
@@ -57,12 +57,16 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         tmp_path = tmp.name
     
     try:
-        # Extract pages
-        pages = extract_pages(tmp_path)
+        # Extract document (pages + sections + tables)
+        doc = extract_document_with_tables(tmp_path)
+        pages = doc.get('pages', [])
         
+        # Choose a single embedding model for consistency across components
+        chosen_model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+
         # Build sentence graph
         sentence_nodes = build_nodes(pages)
-        drg = DocumentReasoningGraph()
+        drg = DocumentReasoningGraph(model_name=chosen_model)
         drg.add_nodes(sentence_nodes)
         drg.compute_embeddings()
         drg.add_structural_edges()
@@ -72,6 +76,8 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         span_extractor = SpanExtractor()
         spans = span_extractor.extract_spans_from_nodes(sentence_nodes)
         span_graph_builder = SpanGraph()
+        # Ensure spans use the same embedding model
+        span_graph_builder = SpanGraph(model_name=chosen_model)
         span_graph_builder.add_nodes(spans)
         span_graph_builder.compute_embeddings()
         span_graph_builder.add_structural_edges()
@@ -81,7 +87,7 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         
         # Build KG
         kg_builder = KnowledgeGraphBuilder()
-        kg_data = kg_builder.build_kg(spans)
+        kg_data = kg_builder.build_kg(spans, tables=doc.get('tables', []))
         
         # Export graphs for visualization
         os.makedirs('graphs', exist_ok=True)
@@ -91,12 +97,12 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         kg_builder.export_graph_image('graphs/kg_graph.png')
         drg.export_graph_image('graphs/drg_graph.png')
         
-        # Initialize reasoner
+        # Initialize reasoner (use same model for queries and node embeddings)
         reasoner = EnhancedHybridReasoner(
             sentence_graph=drg.graph,
             span_graph=span_graph_builder.graph,
             knowledge_graph=kg_data,
-            model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            model_name=chosen_model,
             use_cross_encoder=False
         )
         

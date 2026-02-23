@@ -274,3 +274,4 @@ class EdgeWeighting:
                 weight += 0.4
         
         return min(weight, 1.0)
+    

@@ -388,7 +388,7 @@ class KnowledgeGraphBuilder:
                     return True
         return False
     
-    def build_kg(self, spans: List[Dict]) -> Dict:
+    def build_kg(self, spans: List[Dict], tables: List[Dict] = None) -> Dict:
         """
         Build enhanced knowledge graph from spans.
         
@@ -405,7 +405,7 @@ class KnowledgeGraphBuilder:
         
         print(f"✅ KG built: {len(entities)} entities, {len(relations)} relations")
         
-        return {
+        result = {
             "entities": [
                 {
                     "entity_id": e.entity_id,
@@ -427,6 +427,12 @@ class KnowledgeGraphBuilder:
             ],
             "graph": self.nx_graph  # Add NetworkX graph
         }
+
+        # Include any extracted tables in KG output for downstream use
+        if tables:
+            result["tables"] = tables
+
+        return result
     
     def _build_nx_graph(self, entities: List[Entity], relations: List[Relation]):
         """Build NetworkX graph from entities and relations."""

@@ -10,13 +10,18 @@ _QA_PIPELINE_CACHE: Dict[str, object] = {}
 
 
 def get_sentence_transformer(model_name: str):
-    """Return a cached SentenceTransformer instance for a given model name."""
+    """Return a cached SentenceTransformer instance for a given model name.
+
+    Uses CPU by default so it never competes with the QA pipeline for GPU VRAM.
+    The QA pipeline (DeBERTa-v3-large) is the GPU bottleneck; the sentence
+    transformer is used for batch pre-encoding and can run efficiently on CPU.
+    """
     if model_name in _MODEL_CACHE:
         return _MODEL_CACHE[model_name]
 
     from sentence_transformers import SentenceTransformer
 
-    model = SentenceTransformer(model_name)
+    model = SentenceTransformer(model_name, device="cpu")
     _MODEL_CACHE[model_name] = model
     return model
 
