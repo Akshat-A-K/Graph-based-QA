@@ -46,7 +46,7 @@ class EnhancedHybridReasoner:
     """
     
     def __init__(self, sentence_graph: nx.Graph, span_graph: nx.Graph,
-                 model_name="sentence-transformers/multi-qa-mpnet-base-dot-v1",
+                 model_name="sentence-transformers/all-mpnet-base-v2",
                  use_cross_encoder=True):
         self.sentence_graph = sentence_graph
         self.span_graph = span_graph
@@ -215,7 +215,6 @@ class EnhancedHybridReasoner:
         """
         Hybrid retrieval: BM25 + Semantic + Centrality
         """
-        query_norm = normalize_text(query)
         query_tokens = set(tokenize(query))
 
         q_emb = self.embed_query(query)
@@ -251,10 +250,17 @@ class EnhancedHybridReasoner:
         centrality_scores = self.span_centrality
         
         # 4. Combine all signals
+        # 4. Combine all signals
         all_span_ids = list(self.span_graph.nodes())
-        sem_scores = [semantic_scores.get(sid, 0) for sid in all_span_ids]
-        lex_scores = [lexical_scores.get(sid, 0) for sid in all_span_ids]
-        cent_scores = [centrality_scores.get(sid, 0) for sid in all_span_ids]
+
+        sem_scores = []
+        lex_scores = []
+        cent_scores = []
+
+        for sid in all_span_ids:
+            sem_scores.append(semantic_scores.get(sid, 0))
+            lex_scores.append(lexical_scores.get(sid, 0))
+            cent_scores.append(centrality_scores.get(sid, 0))
         
         combined = self.hybrid_scorer.combine_scores(sem_scores, lex_scores, cent_scores)
         
@@ -319,11 +325,23 @@ class EnhancedHybridReasoner:
             # Centrality bonus
             cent_bonus = self.span_centrality.get(span_id, 0) * 0.2
             
-            # Discourse bonus
+            # Discourse bonus: check for any discourse markers defined in the
+            # span graph (condition, exception, negation, contrast, etc.)
             text = self.span_graph.nodes[span_id]["text"]
             text_tokens = set(tokenize(text))
             disc_bonus = 0.0
-            if any(m in normalize_text(text) for m in ["except", "unless", "not", "no"]):
+
+            # Collect relevant marker lists from the span_graph's discourse markers
+            marker_cats = ["condition", "exception", "negation", "contrast"]
+            markers = []
+            for cat in marker_cats:
+                markers.extend(self.span_graph.discourse_markers.get(cat, []))
+
+            # Normalize markers and text before matching
+            markers_norm = [normalize_text(m) for m in markers if m]
+            text_norm = normalize_text(text)
+
+            if any(m in text_norm for m in markers_norm):
                 disc_bonus += 0.1
             overlap_bonus = min(0.2, 0.04 * len(text_tokens & query_tokens))
             
@@ -391,39 +409,7 @@ class EnhancedHybridReasoner:
         )
         
         return [sid for sid, _ in ranked[:top_k]]
-    
-    # ========================================
-    # Query Intent Classification
-    # ========================================
-    
-    def classify_query_intent(self, query: str) -> Dict[str, float]:
-        """
-        Classify query intent (WHAT, WHEN, HOW, WHERE, WHY) and return intent weights.
-        Higher weights for detected intents improve retrieval targeting.
-        """
-        query_lower = normalize_text(query)
-        
-        what_keywords = {'what', 'kya', 'क्या', 'which', 'kaun', 'कौन', 'definition', 'परिभाषा'}
-        when_keywords = {'when', 'kab', 'कब', 'deadline', 'date', 'तारीख', 'due', 'समय'}
-        how_keywords = {'how', 'kaise', 'कैसे', 'process', 'format', 'तरीका', 'structure', 'संरचना'}
-        where_keywords = {'where', 'kahan', 'कहाँ', 'location', 'portal', 'link'}
-        why_keywords = {'why', 'kyun', 'क्यों', 'reason', 'कारण', 'purpose', 'उद्देश्य'}
-        
-        intent_weights = {'what': 1.0, 'when': 1.0, 'how': 1.0, 'where': 1.0, 'why': 1.0}
-        
-        if any(kw in query_lower for kw in what_keywords):
-            intent_weights['what'] = 1.3
-        if any(kw in query_lower for kw in when_keywords):
-            intent_weights['when'] = 1.4  # Highest - time-based queries are very specific
-        if any(kw in query_lower for kw in how_keywords):
-            intent_weights['how'] = 1.3
-        if any(kw in query_lower for kw in where_keywords):
-            intent_weights['where'] = 1.2
-        if any(kw in query_lower for kw in why_keywords):
-            intent_weights['why'] = 1.2
-            
-        return intent_weights
-    
+ 
     # ========================================
     # Evidence Diversity + Confidence
     # ========================================
@@ -551,7 +537,7 @@ class EnhancedHybridReasoner:
         Returns (confidence_score, confidence_label)
         """
         if not span_ids or not scores:
-            return 0.0, "Low ✗"
+            return 0.0, "Low"
         
         # Score confidence: how strong are the scores?
         avg_score = np.mean(scores) if scores else 0.0
@@ -593,30 +579,7 @@ class EnhancedHybridReasoner:
             confidence_label = "Low"
             
         return confidence, confidence_label
-    
-    def verify_answer_support(self, answer_text: str, evidence_spans: List[str]) -> Tuple[bool, float]:
-        """
-        Verify that extracted answer is actually supported by evidence.
-        Returns (is_valid, coverage_ratio)
-        """
-        answer_tokens = set(tokenize(answer_text.lower()))
-        
-        if not answer_tokens:
-            return False, 0.0
-        
-        evidence_tokens = set()
-        for span in evidence_spans:
-            evidence_tokens.update(tokenize(span.lower()))
-        
-        # Token overlap - how many answer tokens appear in evidence?
-        matching_tokens = answer_tokens & evidence_tokens
-        coverage = len(matching_tokens) / len(answer_tokens) if answer_tokens else 0.0
-        
-        # Valid if 50%+ of answer tokens appear in evidence
-        is_valid = coverage >= 0.5
-        
-        return is_valid, coverage
-    
+
     # ========================================
     # Main Enhanced Reasoning
     # ========================================
@@ -626,7 +589,6 @@ class EnhancedHybridReasoner:
         Best reasoning strategy combining all improvements.
         """
         query_tokens = set(tokenize(query))
-        query_norm = normalize_text(query)
 
         sentence_scores = self._score_sentences(query)
         # Step 1: Hybrid retrieval (BM25 + Semantic + Centrality)
@@ -638,9 +600,6 @@ class EnhancedHybridReasoner:
         # Step 3: Query expansion
         expansion_results = self.retrieval_with_expansion(query, k=k*2)
         
-        # KG-guided retrieval removed
-        kg_entity_ids = []
-        kg_span_ids = set()
 
         # Merge all candidates
         all_candidates = set(hybrid_results) | set(traversal_results) | set(expansion_results)
@@ -692,7 +651,6 @@ class EnhancedHybridReasoner:
             in_hybrid    = 1.0 if span_id in hybrid_results    else 0.0
             in_traversal = 1.0 if span_id in traversal_results else 0.0
             in_expansion = 1.0 if span_id in expansion_results else 0.0
-            in_kg        = 0.0
 
             # Combined score — purely model/signal-driven, no domain-specific rules
             final_score = (
@@ -741,9 +699,6 @@ class EnhancedHybridReasoner:
                     span_semantic_score = score
                     break
             
-            span_type = self.span_graph.nodes[span_id].get("span_type", "")
-            section_norm = normalize_text(self.span_graph.nodes[span_id].get("section", ""))
-            text_norm = normalize_text(text)
             sentence_id = self.span_graph.nodes[span_id].get("sentence_id")
             sentence_score = sentence_scores.get(sentence_id, 0.0)
 
@@ -823,5 +778,3 @@ class EnhancedHybridReasoner:
             "confidence_label": confidence_label,
             "span_scores": span_score_map
         }
-    
-    # KG entity retrieval removed

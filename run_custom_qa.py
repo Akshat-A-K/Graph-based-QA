@@ -40,9 +40,10 @@ from parser.span_graph import SpanGraph
 # Knowledge graph removed
 from parser.enhanced_reasoner import EnhancedHybridReasoner
 from parser.answer_selector import select_answer
+from parser.evaluator import QAEvaluator
 
-# Single embedding model used consistently across all graph components
-EMBED_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+# Single embedding model used consistently across all graph components (English-only)
+EMBED_MODEL = "sentence-transformers/all-mpnet-base-v2"
 
 
 def _output_path(pdf_path: str, ext: str) -> str:
@@ -98,7 +99,7 @@ def main():
         _warn("ERROR: No sentence nodes were built from the PDF. Aborting.", color="red")
         return
 
-    print("🚀 Building Document Reasoning Graph...")
+    print("Building Document Reasoning Graph...")
     drg = DocumentReasoningGraph(model_name=EMBED_MODEL)
     drg.add_nodes(sentence_nodes)
     drg.compute_embeddings()
@@ -112,7 +113,7 @@ def main():
     # Clear memory after DRG
     gc.collect()
 
-    print("📊 Extracting spans...")
+    print("Extracting spans...")
     span_extractor = SpanExtractor()
     spans = span_extractor.extract_spans_from_nodes(sentence_nodes)
 
@@ -129,10 +130,14 @@ def main():
         _warn("ERROR: Span Graph is empty. Aborting.", color="red")
         return
 
+    os.makedirs('graphs', exist_ok=True)
+    span_graph_builder.export_graph_json('graphs/span_graph.json')
+    span_graph_builder.export_graph_image('graphs/span_graph.png')
+    drg.export_graph_image('graphs/drg_graph.png')
+
     # Clear memory after Span Graph
     gc.collect()
 
-    _warn("WARNING: Knowledge Graph support was removed. KG step skipped.")
     reasoner = EnhancedHybridReasoner(
         sentence_graph=drg.graph,
         span_graph=span_graph_builder.graph,
@@ -295,8 +300,31 @@ def main():
 
         elapsed = time.time() - q_start
 
+        eval_metrics = {"exact_match": 0.0, "f1": 0.0}
+        recall_at_5 = 0.0
+        reasoning_depth = 0
+
+        if answer != "No answer found" and evidence_spans:
+            eval_metrics = QAEvaluator.evaluate(answer, evidence_spans[0])
+
+            # Evidence Recall@5
+            recall_at_5 = QAEvaluator.evidence_recall_at_k(
+                evidence_spans,
+                evidence_spans[0],
+                k=5
+            )
+
+        # Graph reasoning depth
+        reasoning_depth = QAEvaluator.reasoning_depth(
+            results.get("traversal_results", []),
+            results.get("expansion_results", [])
+        )
+
         print(f"A{i:02d}: {answer}")
         print(f"     Confidence : {confidence_label}  ({confidence:.2%})")
+        print(f"     Eval       : EM={eval_metrics['exact_match']:.2f}  F1={eval_metrics['f1']:.2f}  (vs top evidence)")
+        print(f"     Retrieval  : Recall@5={recall_at_5:.2f}")
+        print(f"     Reasoning  : Depth={reasoning_depth}")
         print(f"     Evidence   : {len(evidence_spans)} span(s)   |  "
               f"Hybrid={len(results.get('hybrid_results', []))}  "
               f"Traversal={len(results.get('traversal_results', []))}  "
@@ -316,6 +344,12 @@ def main():
             "time_s": round(elapsed, 3),
             "evidence_count": len(evidence_spans),
             "evidence_spans": evidence_spans[:3],
+            "eval_vs_evidence": {
+                "exact_match": round(eval_metrics["exact_match"], 4),
+                "f1": round(eval_metrics["f1"], 4),
+                "recall_at_5": round(recall_at_5, 4),
+            },
+            "reasoning_depth": reasoning_depth,
             "retrieval": {
                 "hybrid": len(results.get("hybrid_results", [])),
                 "traversal": len(results.get("traversal_results", [])),
@@ -335,7 +369,10 @@ def main():
     med_conf  = sum(1 for r in answered if 0.45 <= r["confidence"] < 0.7)
     low_conf  = sum(1 for r in answered if r["confidence"] < 0.45)
     avg_time  = sum(r["time_s"] for r in qa_records) / max(len(qa_records), 1)
-
+    avg_f1    = sum(r["eval_vs_evidence"]["f1"] for r in answered) / max(len(answered), 1)
+    avg_em    = sum(r["eval_vs_evidence"]["exact_match"] for r in answered) / max(len(answered), 1)
+    avg_recall = sum(r["eval_vs_evidence"]["recall_at_5"] for r in answered) / max(len(answered), 1)
+    avg_depth = sum(r["reasoning_depth"] for r in answered) / max(len(answered), 1)
     analysis = {
         "total_questions": len(qa_records),
         "answered": len(answered),
@@ -343,8 +380,12 @@ def main():
         "answer_rate_pct": round(len(answered) / max(len(qa_records), 1) * 100, 1),
         "avg_confidence": round(avg_conf, 4),
         "confidence_distribution": {"high": high_conf, "medium": med_conf, "low": low_conf},
+        "avg_f1_vs_evidence": round(avg_f1, 4),
+        "avg_em_vs_evidence": round(avg_em, 4),
         "avg_time_per_question_s": round(avg_time, 3),
         "total_pipeline_time_s": round(total_time, 2),
+        "avg_recall_at_5": round(avg_recall, 4),
+        "avg_reasoning_depth": round(avg_depth, 2),
     }
 
     print("\n" + "=" * 72)
@@ -355,6 +396,10 @@ def main():
     print(f"  Unanswered      : {analysis['unanswered']}")
     print(f"  Avg confidence  : {analysis['avg_confidence']:.2%}")
     print(f"  Confidence dist : High={high_conf}  Medium={med_conf}  Low={low_conf}")
+    print(f"  Avg F1 (vs evid): {analysis['avg_f1_vs_evidence']:.4f}")
+    print(f"  Avg EM (vs evid): {analysis['avg_em_vs_evidence']:.4f}")
+    print(f"  Avg Recall@5  : {analysis['avg_recall_at_5']:.4f}")
+    print(f"  Avg Depth     : {analysis['avg_reasoning_depth']:.2f}")
     print(f"  Avg time/Q      : {analysis['avg_time_per_question_s']:.2f}s")
     print(f"  Total time      : {analysis['total_pipeline_time_s']:.1f}s")
     print("=" * 72)
@@ -393,6 +438,7 @@ def main():
             f.write(f"\nQ{r['q_num']:02d}: {r['question']}\n")
             f.write(f"A{r['q_num']:02d}: {r['answer']}\n")
             f.write(f"    Confidence : {r['confidence_label']}  ({r['confidence']:.2%})\n")
+            f.write(f"    Eval       : EM={r['eval_vs_evidence']['exact_match']:.4f}  F1={r['eval_vs_evidence']['f1']:.4f}  (vs top evidence)\n")
             f.write(f"    Evidence   : {r['evidence_count']} span(s)\n")
             f.write(f"    Time       : {r['time_s']}s\n")
             if r["evidence_spans"]:

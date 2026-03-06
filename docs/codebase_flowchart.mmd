@@ -1,0 +1,15 @@
+flowchart TD
+    A[PDF Document] --> B[Text Extraction]
+    B --> C[Sentence Splitting]
+    C --> D[Build Sentence Graph]
+    C --> E[Extract Spans]
+    E --> F[Build Span Graph]
+    D --> G[Initialize Reasoner]
+    F --> G
+    G --> H[User Question]
+    H --> I[Hybrid Retrieval & Ranking]
+    I --> J[Select Evidence Spans]
+    J --> K[Extract Answer]
+    K --> L[Return Answer + Evidence]
+
+https://kroki.io/mermaid/svg/eNpNj01vwjAMhu_7FT7tgvgLkyjpF-zAgJ2iHrLWgEXmoiQFtl-_yC0ZPll6Hr_ye7D9rT0ZF2CvXiDOQm9UAapvh2_k0MB8_gaZ3uM9QH4PzrSBem5EzQQu9S6KyC3C7mIpBOLjyJfClc4Gsh0kq3Tmcno2cj0lxwDDfkS5oOJxHMHzoRJa6popkLH0i7BF43tGNwrFKMheyl7pT48OPgb0_xUqQbWufr4cdTEjOMKrsfAKW8PnVKUWbxWrWox_5lfqpsbp4ZUo69Rlwf72-GYt7F3H_MHxhGCWcpo_RaJzSg==

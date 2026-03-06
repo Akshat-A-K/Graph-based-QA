@@ -14,8 +14,8 @@ matplotlib.use('Agg')  # Non-interactive backend
 class DocumentReasoningGraph:
     def __init__(
         self,
-        # multi-qa-mpnet: trained on 215M QA pairs for asymmetric question→passage retrieval
-        model_name="sentence-transformers/multi-qa-mpnet-base-dot-v1",
+        # Use an English-focused embedding model by default
+        model_name="sentence-transformers/all-mpnet-base-v2",
         enable_model_ner: bool = False
     ):
         print("Loading DRG model...")
@@ -32,9 +32,10 @@ class DocumentReasoningGraph:
 
         try:
             from transformers import pipeline
+            # Use an English NER model
             self.ner_pipeline = pipeline(
                 "ner",
-                model="Davlan/bert-base-multilingual-cased-ner-hrl",
+                model="dslim/bert-base-NER",
                 aggregation_strategy="simple"
             )
         except Exception:
@@ -60,7 +61,7 @@ class DocumentReasoningGraph:
     # STEP 2: embeddings + importance
     # -------------------------
     def compute_embeddings(self):
-        print("📊 Computing embeddings and importance scores...")
+        print("Computing embeddings and importance scores...")
 
         texts = [self.graph.nodes[n]["text"] for n in self.graph.nodes]
         embeddings = self.model.encode(texts, show_progress_bar=True)
@@ -69,7 +70,7 @@ class DocumentReasoningGraph:
         try:
             tfidf_matrix = self.tfidf_vectorizer.fit_transform(texts)
             tfidf_scores = np.asarray(tfidf_matrix.sum(axis=1)).flatten()
-        except:
+        except Exception:
             # Fallback if TF-IDF fails
             tfidf_scores = np.ones(len(texts))
 
@@ -85,7 +86,7 @@ class DocumentReasoningGraph:
     # STEP 3: enhanced structural edges
     # -------------------------
     def add_structural_edges(self):
-        print("🔗 Adding enhanced structural edges...")
+        print("Adding enhanced structural edges...")
 
         nodes = list(self.graph.nodes)
 
@@ -117,7 +118,7 @@ class DocumentReasoningGraph:
                 # Near neighbors (within 3 sentences)
                 if (d1["page"] == d2["page"] and 
                     1 < abs(d1["sent_index"] - d2["sent_index"]) <= 3):
-                    proximity_weight = 1.0 / abs(d1["sent_index"] - d2["sent_index"])
+                    proximity_weight = 1.0 / abs(d1["sent_index"] - d2["sent_index"]) 
                     self.graph.add_edge(n1, n2, type="proximity", weight=proximity_weight)
                     self.graph.add_edge(n2, n1, type="proximity", weight=proximity_weight)
 
@@ -125,7 +126,7 @@ class DocumentReasoningGraph:
     # STEP 4: enhanced semantic edges
     # -------------------------
     def add_semantic_edges(self, threshold=0.75):
-        print("🧠 Adding semantic and entity-based edges...")
+        print("Adding semantic and entity-based edges...")
 
         node_ids = list(self.graph.nodes)
         embeddings = [self.graph.nodes[n]["embedding"] for n in node_ids]
@@ -165,7 +166,7 @@ class DocumentReasoningGraph:
                     )
                     edge_count += 1
         
-        print(f"  ✓ Added {edge_count} semantic edge pairs")
+        print(f"Added {edge_count} semantic edge pairs")
         
         # Add entity-based coreference edges
         self._add_entity_edges()
@@ -175,7 +176,7 @@ class DocumentReasoningGraph:
     # -------------------------
     def _extract_entities(self):
         """Extract named entities and key terms from sentences"""
-        print("🏷️  Extracting entities...")
+        print("Extracting entities...")
         
         # Simple pattern-based entity extraction (fallback)
         patterns = [
@@ -220,7 +221,7 @@ class DocumentReasoningGraph:
     # -------------------------
     def _add_entity_edges(self):
         """Connect sentences that mention the same entities"""
-        print("🔗 Adding entity coreference edges...")
+        print("Adding entity coreference edges...")
         
         edge_count = 0
         for entity, node_list in self.entity_map.items():
@@ -234,21 +235,21 @@ class DocumentReasoningGraph:
                         self.graph.add_edge(n2, n1, type="entity", weight=0.85, entity=entity)
                         edge_count += 1
         
-        print(f"  ✓ Added {edge_count} entity coreference edge pairs")
+        print(f"Added {edge_count} entity coreference edge pairs")
     
     # -------------------------
     # COMPUTE GRAPH METRICS
     # -------------------------
     def compute_graph_metrics(self):
         """Compute node centrality and importance metrics"""
-        print("📈 Computing graph centrality metrics...")
+        print("Computing graph centrality metrics...")
         
         # PageRank for importance
         try:
             pagerank = nx.pagerank(self.graph, weight='weight')
             for node_id in self.graph.nodes:
                 self.graph.nodes[node_id]['pagerank'] = pagerank.get(node_id, 0)
-        except:
+        except Exception:
             pass
         
         # Degree centrality
@@ -293,4 +294,4 @@ class DocumentReasoningGraph:
         plt.tight_layout()
         plt.savefig(output_path, dpi=150, bbox_inches='tight')
         plt.close()
-        print(f"✅ DRG image saved to {output_path}")
+        print(f"DRG image saved to {output_path}")

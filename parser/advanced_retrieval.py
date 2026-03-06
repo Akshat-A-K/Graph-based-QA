@@ -255,10 +255,14 @@ class EdgeWeighting:
         text2_lower = node2_text.lower()
         
         discourse_markers = {
-            'condition': ['if', 'unless', 'provided', 'only if'],
-            'exception': ['except', 'excluding', 'but not', 'other than'],
-            'temporal': ['before', 'after', 'until', 'by', 'deadline'],
-            'causal': ['because', 'since', 'therefore', 'thus', 'hence'],
+            "condition": ["if", "unless", "provided", "only if", "in case", "when"],
+            "exception": ["except", "excluding", "but not", "other than", "apart from"],
+            "temporal": ["before", "after", "until", "by", "deadline", "during", "while"],
+            "negation": ["not", "no", "never", "cannot", "won't", "shouldn't"],
+            "requirement": ["must", "shall", "required", "need to", "have to", "should"],
+            "causation": ["because", "since", "therefore", "thus", "hence", "so"],
+            "contrast": ["but", "however", "although", "while", "whereas", "yet"],
+            "addition": ["and", "also", "moreover", "furthermore", "additionally"],
         }
         
         weight = 0.0

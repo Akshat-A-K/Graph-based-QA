@@ -43,7 +43,7 @@ class SpanExtractor:
                 r';\s+(?=[A-Z])',            # semicolon followed by capital
                 r':\s+(?=[A-Z])',            # colon followed by capital
                 r'—\s+',                     # em-dash (strong clause break)
-                r'–\s+',                     # en-dash
+                r'-\s+',                     # en-dash
                 r'\)\s+(?=[A-Z])',          # closing parenthesis followed by capital
                 r',\s+(?:(?:but|however|although|while|whereas|so|then|therefore)\b)',
         ]
@@ -280,16 +280,3 @@ class SpanExtractor:
         
         return all_spans
 
-
-def build_span_nodes(sentence_nodes: List[Dict]) -> List[Dict]:
-    """
-    Main entry point: convert sentence nodes to span nodes.
-    
-    Args:
-        sentence_nodes: List of sentence-level nodes from drg_nodes.build_nodes()
-    
-    Returns:
-        List of span-level nodes with finer granularity
-    """
-    extractor = SpanExtractor()
-    return extractor.extract_spans_from_nodes(sentence_nodes)

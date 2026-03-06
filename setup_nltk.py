@@ -8,7 +8,7 @@ import sys
 
 def download_nltk_data():
     """Download required NLTK datasets"""
-    print("📦 Downloading NLTK data...")
+    print("Downloading NLTK data...")
     
     try:
         # Download stopwords
@@ -19,7 +19,7 @@ def download_nltk_data():
         print("  - Downloading punkt...")
         nltk.download('punkt', quiet=False)
         
-        print("\n✅ NLTK data downloaded successfully!")
+        print("\nNLTK data downloaded successfully!")
         print("   You can now run the QA system.")
         
         # Test import
@@ -30,7 +30,7 @@ def download_nltk_data():
         return True
         
     except Exception as e:
-        print(f"\n❌ Error downloading NLTK data: {e}")
+        print(f"\nError downloading NLTK data: {e}")
         print("   Please check your internet connection and try again.")
         return False
 

@@ -4,6 +4,7 @@ Model cache utilities to avoid re-loading large transformers multiple times.
 
 import torch
 from typing import Dict
+from sentence_transformers import SentenceTransformer
 
 _MODEL_CACHE: Dict[str, "SentenceTransformer"] = {}
 _QA_PIPELINE_CACHE: Dict[str, object] = {}
@@ -19,7 +20,6 @@ def get_sentence_transformer(model_name: str):
     if model_name in _MODEL_CACHE:
         return _MODEL_CACHE[model_name]
 
-    from sentence_transformers import SentenceTransformer
 
     model = SentenceTransformer(model_name, device="cpu")
     _MODEL_CACHE[model_name] = model

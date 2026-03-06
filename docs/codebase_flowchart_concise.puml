@@ -1,0 +1,18 @@
+@startuml
+title Concise QA Research Methodology
+
+start
+:PDF Document;
+:Text Extraction;
+:Sentence Splitting;
+:Build Sentence Graph;
+:Extract Spans;
+:Build Span Graph;
+:Initialize Reasoner;
+:User Question;
+:Hybrid Retrieval & Ranking;
+:Select Evidence Spans;
+:Extract Answer;
+:Return Answer + Evidence;
+stop
+@enduml

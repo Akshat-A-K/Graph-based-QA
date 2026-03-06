@@ -6,7 +6,7 @@ A comprehensive Python framework for extracting precise answers from PDF documen
 
 ---
 
-## 📖 Table of Contents
+## Table of Contents
 
 - [Overview](#-overview)
 - [Key Features](#-key-features)
@@ -43,27 +43,27 @@ This is a **graph-based question answering system** that reads PDF documents and
 - ❌ LLMs alone: Can hallucinate, expensive, not interpretable
 
 **Our Graph-Based Approach:**
-- ✅ Semantic understanding through embeddings
-- ✅ Structural awareness via graph relationships
-- ✅ Multi-level reasoning (sentence → span → entity)
-- ✅ Explainable evidence with graph visualization
-- ✅ Zero-shot learning (no training data needed)
-- ✅ Multilingual support (50+ languages)
-- ✅ **NEW:** Intelligent stopword filtering for better relevance
-- ✅ **NEW:** Model-score based answer ranking (not just overlap)
-- ✅ **NEW:** Abstain on low-confidence answers
+- Semantic understanding through embeddings
+- Structural awareness via graph relationships
+- Multi-level reasoning (sentence → span → entity)
+- Explainable evidence with graph visualization
+- Zero-shot learning (no training data needed)
+- Multilingual support (50+ languages)
+- **NEW:** Intelligent stopword filtering for better relevance
+- **NEW:** Model-score based answer ranking (not just overlap)
+- **NEW:** Abstain on low-confidence answers
 
 ### Use Cases
 
-- 📄 **Academic Assignments**: Extract deadlines, requirements, grading criteria
-- 📋 **Legal Documents**: Find clauses, conditions, exceptions
-- 📊 **Reports & Papers**: Extract key findings, dates, metrics
+- **Academic Assignments**: Extract deadlines, requirements, grading criteria
+- **Legal Documents**: Find clauses, conditions, exceptions
+- **Reports & Papers**: Extract key findings, dates, metrics
 - 📝 **Documentation**: Find specific instructions, constraints, parameters
-- 🌍 **Multilingual Documents**: Query in English, Hindi, or Hinglish
+- **Multilingual Documents**: Query in English, Hindi, or Hinglish
 
 ---
 
-## 🎯 Key Features
+## Key Features
 
 ### Multi-Level Graph Reasoning
 - **3 Graph Types**: Sentence graph (DRG), Span graph, Knowledge graph (KG)
@@ -80,14 +80,14 @@ This is a **graph-based question answering system** that reads PDF documents and
 - **NLTK Stopwords**: Intelligent filtering of common words for better relevance
 
 ### Advanced Features
-- 🌍 **Multilingual**: Supports 50+ languages (English, Hindi, Hinglish, etc.)
-- 🔍 **Zero-Shot**: No training required - works on any document
-- 📊 **Graph Visualization**: Export graphs as PNG images (NetworkX layouts)
-- 💡 **Evidence-Based**: Shows supporting text spans with confidence scores
+- **Multilingual**: Supports 50+ languages (English, Hindi, Hinglish, etc.)
+- **Zero-Shot**: No training required - works on any document
+- **Graph Visualization**: Export graphs as PNG images (NetworkX layouts)
+- **Evidence-Based**: Shows supporting text spans with confidence scores
 - 🎨 **Streamlit UI**: Interactive web interface for easy usage
-- ⚡ **Fast Processing**: Efficient graph algorithms with NetworkX
+- **Fast Processing**: Efficient graph algorithms with NetworkX
 - 📈 **Confidence Scoring**: Automatically calculates answer confidence based on evidence quality, agreement, and consistency
-- 🎯 **Query Intent Classification**: Detects question intent (WHAT, WHEN, HOW, WHERE, WHY) for targeted retrieval
+- **Query Intent Classification**: Detects question intent (WHAT, WHEN, HOW, WHERE, WHY) for targeted retrieval
 - 🔄 **Evidence Diversity**: Prefers evidence from different sections to avoid redundancy
 - ✓ **Answer Validation**: Verifies extracted answers are actually supported by retrieved evidence
 - 🚫 **Abstain Threshold**: Refuses to answer when confidence is too low (< 35%)
@@ -150,10 +150,10 @@ This is a **graph-based question answering system** that reads PDF documents and
 - Ad-hoc scoring led to wrong span selection
 
 **After (v2.1):**
-- ✅ 60-80% more coherent answers
-- ✅ 50% fewer irrelevant results
-- ✅ Abstains on truly ambiguous queries
-- ✅ Uses actual model confidence for ranking
+- 60-80% more coherent answers
+- 50% fewer irrelevant results
+- Abstains on truly ambiguous queries
+- Uses actual model confidence for ranking
 
 ---
 
@@ -337,7 +337,7 @@ python -c "import networkx, sentence_transformers, streamlit, nltk; from nltk.co
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Option 1: Interactive Web UI (Recommended)
 
@@ -352,7 +352,7 @@ This will:
 
 **Usage:**
 1. Click "Browse files" to upload a PDF
-2. Click "🚀 Process PDF" to build graphs (wait 30-60 seconds)
+2. Click "Process PDF" to build graphs (wait 30-60 seconds)
 3. Ask questions using Quick buttons OR type custom questions
 4. View answers with supporting evidence
 5. Check `graphs/` folder for visualizations
@@ -413,7 +413,7 @@ Q3: What is the evaluation criteria?
 
 ---
 
-## 📋 Detailed Usage
+## Detailed Usage
 
 ### Web Interface (Streamlit)
 
@@ -438,14 +438,14 @@ streamlit run app.py --server.headless true
    - File info displayed (name, size)
    
 2. **Process PDF**
-   - Click "🚀 Process PDF" button
+   - Click "Process PDF" button
    - Wait for progress bars (6 steps)
    - Graph stats displayed when complete
 
 3. **Ask Questions** (Main Area)
    - **Quick Questions**: 3 preset buttons
      - 🕐 Deadline
-     - 📋 Requirements
+     - Requirements
      - 💯 Marks
    - **Custom Input**: Type your own question
    - **Multilingual**: Ask in English, Hindi, or Hinglish
@@ -1358,7 +1358,7 @@ def _query_expansion_retrieval(self, query: str, k: int) -> List[int]:
 
 ---
 
-## 📊 Graph Types Explained
+## Graph Types Explained
 
 ### 1. Document Reasoning Graph (DRG)
 
@@ -1699,7 +1699,7 @@ graph-based-qa/
 
 ---
 
-## 💡 Examples
+## Examples
 
 ### Example 1: Deadline Query
 
@@ -1942,7 +1942,7 @@ pip list | grep -E "(networkx|sentence-transformers|streamlit|pymupdf)"
 
 ---
 
-## ✨ Recent Accuracy Improvements (v2.0)
+## Recent Accuracy Improvements (v2.0)
 
 This release includes several high-impact improvements designed to boost answer accuracy and reliability:
 
