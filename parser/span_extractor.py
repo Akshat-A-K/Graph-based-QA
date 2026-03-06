@@ -43,8 +43,12 @@ class SpanExtractor:
 
         # Patterns for clause boundaries (more conservative to avoid over-splitting)
         self.clause_markers = [
-            r';\s+',
-            r':\s+(?=[A-Z])',  # Only split on colon if followed by capital
+                r';\s+(?=[A-Z])',            # semicolon followed by capital
+                r':\s+(?=[A-Z])',            # colon followed by capital
+                r'—\s+',                     # em-dash (strong clause break)
+                r'–\s+',                     # en-dash
+                r'\)\s+(?=[A-Z])',          # closing parenthesis followed by capital
+                r',\s+(?:(?:but|however|although|while|whereas|so|then|therefore)\b)',
         ]
         
         # Enhanced patterns for important phrases with better coverage

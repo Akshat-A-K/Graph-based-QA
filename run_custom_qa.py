@@ -64,7 +64,7 @@ def main():
     if len(sys.argv) > 1:
         pdf_path = sys.argv[1]
     else:
-        pdf_path = r"/home/gaurav/inlp_project/OM/Graph-based-QA/temp_Rsearch_pepar.pdf"
+        pdf_path = r"C:\Users\kotad\OneDrive\Desktop\INLP\Graph-based-QA\temp_Rsearch_pepar.pdf"
 
     pipeline_start = time.time()
 
@@ -79,7 +79,8 @@ def main():
     drg.compute_embeddings()
     drg.add_structural_edges()
     drg.add_semantic_edges(threshold=0.75)
-
+    drg.compute_graph_metrics()
+    
     # Clear memory after DRG
     gc.collect()
 
