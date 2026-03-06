@@ -1,9 +1,3 @@
-"""
-Streamlit QA Interface for Graph-Based Document Question Answering
-Upload PDF and ask questions with evidence-based retrieval
-"""
-
-# Suppress TensorFlow warnings
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -16,21 +10,14 @@ from parser.drg_nodes import build_nodes
 from parser.drg_graph import DocumentReasoningGraph
 from parser.span_extractor import SpanExtractor
 from parser.span_graph import SpanGraph
-from parser.kg_builder import KnowledgeGraphBuilder
+
 from parser.enhanced_reasoner import EnhancedHybridReasoner
 from parser.advanced_retrieval import normalize_text, tokenize
 from parser.answer_selector import select_answer
 
+st.set_page_config(page_title="Graph-Based QA System", page_icon=None, layout="wide", initial_sidebar_state="expanded")
 
-# Page config
-st.set_page_config(
-    page_title="Graph-Based QA System",
-    page_icon="📄",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-st.title("🔍 Graph-Based Document QA System")
+st.title("Graph-Based Document QA System")
 st.markdown("""
 <div style='background-color: #0e1117; padding: 1rem; border-radius: 0.5rem; border-left: 4px solid #4CAF50;'>
     <p style='margin: 0; color: #e0e0e0;'>
@@ -86,23 +73,17 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         span_graph_builder.add_discourse_edges()
         span_graph_builder.compute_graph_metrics()
         
-        # Build KG
-        kg_builder = KnowledgeGraphBuilder()
-        kg_data = kg_builder.build_kg(spans, tables=doc.get('tables', []))
-        
         # Export graphs for visualization
         os.makedirs('graphs', exist_ok=True)
         span_graph_builder.export_graph_json('graphs/span_graph.json')
         span_graph_builder.export_graph_image('graphs/span_graph.png')
-        kg_builder.export_graph_json('graphs/kg_graph.json')
-        kg_builder.export_graph_image('graphs/kg_graph.png')
+
         drg.export_graph_image('graphs/drg_graph.png')
         
         # Initialize reasoner (use same model for queries and node embeddings)
         reasoner = EnhancedHybridReasoner(
             sentence_graph=drg.graph,
             span_graph=span_graph_builder.graph,
-            knowledge_graph=kg_data,
             model_name=chosen_model,
             use_cross_encoder=False
         )
@@ -114,8 +95,7 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
             'pages': pages,
             'sentence_nodes': sentence_nodes,
             'spans': spans,
-            'kg': kg_data,  # Return the complete kg data
-            'kg_builder': kg_builder
+
         }
     
     finally:
@@ -135,7 +115,7 @@ def extract_answer_text(results, span_graph, query, reasoner=None, max_length=30
 
 # Sidebar - PDF Upload
 with st.sidebar:
-    st.header("📤 Upload Document")
+    st.header("Upload Document")
     st.markdown("*Upload a PDF to analyze and ask questions*")
     uploaded_file = st.file_uploader("Choose a PDF file", type="pdf", help="Upload any PDF document to start asking questions")
     
@@ -143,7 +123,7 @@ with st.sidebar:
         file_size_mb = len(uploaded_file.getvalue()) / (1024 * 1024)
         st.info(f"📄 **{uploaded_file.name}** ({file_size_mb:.1f} MB)")
         
-        if st.button("🚀 Process PDF", use_container_width=True, type="primary"):
+        if st.button("Process PDF", use_container_width=True, type="primary"):
             with st.spinner("🔨 Building multi-level graphs from document..."):
                 st.session_state.graphs = build_graphs_from_pdf(
                     uploaded_file.getvalue(),
@@ -158,17 +138,16 @@ with st.sidebar:
     # Document info
     if st.session_state.graphs:
         st.markdown("---")
-        st.markdown("### 📊 Document Statistics")
+        st.markdown("### Document Statistics")
         col1, col2 = st.columns(2)
         with col1:
             num_sentences = st.session_state.graphs['drg'].graph.number_of_nodes()
-            st.metric("📝 Sentences", num_sentences, help="Total sentences in the document")
+            st.metric("Sentences", num_sentences, help="Total sentences in the document")
         with col2:
             num_spans = st.session_state.graphs['span_graph'].graph.number_of_nodes()
-            st.metric("🔤 Spans", num_spans, help="Fine-grained text spans extracted")
+            st.metric("Spans", num_spans, help="Fine-grained text spans extracted")
         
-        num_entities = len(st.session_state.graphs['kg']['entities'])
-        st.metric("🏷️ Entities", num_entities, help="Named entities identified")
+        # Entities metric removed (knowledge graph removed)
 
 
 # Main content
@@ -176,7 +155,7 @@ if st.session_state.graphs:
     col1, col2 = st.columns([2, 1], gap="medium")
     
     with col1:
-        st.header("❓ Ask a Question")
+        st.header("Ask a Question")
         
         # Main question input
         question = st.text_input(
@@ -188,7 +167,7 @@ if st.session_state.graphs:
         )
         
         if question:
-            with st.spinner("🔍 Searching for answer..."):
+            with st.spinner("Searching for answer..."):
                 results = st.session_state.graphs['reasoner'].enhanced_reasoning(
                     question, 
                     k=5
@@ -196,7 +175,7 @@ if st.session_state.graphs:
             
             # Display answer
             st.markdown("---")
-            st.subheader("📌 Answer")
+            st.subheader("Answer")
             answer, answer_spans, confidence, confidence_label = extract_answer_text(
                 results,
                 st.session_state.graphs['span_graph'],
@@ -223,11 +202,11 @@ if st.session_state.graphs:
                 st.metric("Evidence Spans", num_evidence, help="Number of supporting spans found")
             with col_conf3:
                 kg_ents = len(results.get('kg_entities', []))
-                st.metric("KG Entities", kg_ents, help="Knowledge graph entities used")
+                # KG metrics removed
             
             # Evidence
             st.markdown("")
-            st.subheader("📋 Evidence Spans")
+            st.subheader("Evidence Spans")
             if len(answer_spans) > 1:
                 st.caption(f"Found {len(answer_spans)} supporting evidence spans")
             for i, span_text in enumerate(answer_spans[:5], 1):  # Limit to top 5
@@ -236,11 +215,11 @@ if st.session_state.graphs:
             
             # Breakdown
             st.markdown("")
-            with st.expander("🔬 Retrieval Breakdown", expanded=False):
+            with st.expander("Retrieval Breakdown", expanded=False):
                 col_a, col_b = st.columns(2)
                 
                 with col_a:
-                    st.markdown("**🎯 Retrieval Methods**")
+                    st.markdown("**Retrieval Methods**")
                     hybrid = len(results.get('hybrid_results', []))
                     traversal = len(results.get('traversal_results', []))
                     expansion = len(results.get('expansion_results', []))
@@ -250,9 +229,9 @@ if st.session_state.graphs:
                     st.metric("Query Expansion", expansion, help="Synonym-based expansion")
                 
                 with col_b:
-                    st.markdown("**🧠 Knowledge Graph**")
+                    st.markdown("**Knowledge Graph**")
                     kg_entity_ids = results.get('kg_entities', [])
-                    st.metric("Entities Found", len(kg_entity_ids), help="Named entities used in reasoning")
+                    # KG entities metric removed
                     
                     # Get actual entity text from KG
                     if kg_entity_ids and st.session_state.graphs.get('kg'):
@@ -269,46 +248,41 @@ if st.session_state.graphs:
                                 st.caption(f"• {et}")
     
     with col2:
-        st.header("📊 Document Stats")
+        st.header("Document Stats")
         
         st.metric(
-            "📝 Sentences",
+            "Sentences",
             st.session_state.graphs['drg'].graph.number_of_nodes(),
             help="Total sentences in document"
         )
         st.metric(
-            "🔤 Spans",
+            "Spans",
             st.session_state.graphs['span_graph'].graph.number_of_nodes(),
             help="Fine-grained text spans"
         )
-        st.metric(
-            "🏷️ Entities",
-            len(st.session_state.graphs['kg']['entities']),
-            help="Named entities extracted"
-        )
+        # Entities metric removed (knowledge graph removed)
         
         st.divider()
         
-        st.markdown("### 🎯 System Features")
+        st.markdown("### System Features")
         st.markdown("""
-        **� Graph Visualizations:**
+        **Graph Visualizations:**
         - `graphs/drg_graph.png`
-        - `graphs/span_graph.png`  
-        - `graphs/kg_graph.png`
+        - `graphs/span_graph.png`
         
         **�🔗 Graph Types:**
-        - 📊 Sentence-level DRG
-        - 🔤 Span-level graph
-        - 🧠 Knowledge graph
+        - Sentence-level DRG
+        - Span-level graph
+        - Knowledge graph (removed)
         
         **🔍 Retrieval Methods:**
-        - 📚 BM25 lexical matching
-        - 🧬 Semantic embeddings
-        - 🌐 Graph centrality
-        - 🔄 Query expansion
+        - BM25 lexical matching
+        - Semantic embeddings
+        - Graph centrality
+        - Query expansion
         
         **🌍 Languages Supported:**
-        - ✅ Hindi / Hinglish / English
+        - Hindi / Hinglish / English
         """)
 
 else:

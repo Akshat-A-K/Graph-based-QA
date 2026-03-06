@@ -1,7 +1,4 @@
-"""
-Enhanced Span Graph Builder
-Advanced discourse relations, coreference, semantic clustering, and visualization export
-"""
+"""Span graph builder"""
 
 import json
 import networkx as nx

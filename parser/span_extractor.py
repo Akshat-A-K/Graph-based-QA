@@ -1,7 +1,4 @@
-"""
-Span-level text extraction for fine-grained document reasoning.
-Extracts meaningful text spans (phrases, clauses) beyond sentence boundaries.
-"""
+"""Span-level text extraction"""
 
 import re
 from typing import List, Dict, Tuple

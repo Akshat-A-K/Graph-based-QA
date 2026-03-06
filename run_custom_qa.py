@@ -9,7 +9,7 @@ from datetime import datetime
 
 
 class _NumpyEncoder(json.JSONEncoder):
-    """Serialize numpy scalar types (float32, int64, …) to native Python."""
+    "Serialize numpy scalar types to native Python"
     def default(self, obj):
         if isinstance(obj, np.integer):
             return int(obj)
@@ -19,20 +19,16 @@ class _NumpyEncoder(json.JSONEncoder):
             return obj.tolist()
         return super().default(obj)
 
-# Parse simple CLI flags for OCR/tables before importing parser modules
 ENABLE_OCR_FLAG = False
 ENABLE_TABLES_FLAG = None
 if "--enable-ocr" in sys.argv:
     ENABLE_OCR_FLAG = True
     sys.argv.remove("--enable-ocr")
-
 if "--disable-tables" in sys.argv:
     ENABLE_TABLES_FLAG = False
     sys.argv.remove("--disable-tables")
-
 if ENABLE_OCR_FLAG:
     os.environ["PDF_ENABLE_OCR"] = "true"
-
 if ENABLE_TABLES_FLAG is False:
     os.environ["PDF_ENABLE_TABLES"] = "false"
 
@@ -41,7 +37,7 @@ from parser.drg_nodes import build_nodes
 from parser.drg_graph import DocumentReasoningGraph
 from parser.span_extractor import SpanExtractor
 from parser.span_graph import SpanGraph
-from parser.kg_builder import KnowledgeGraphBuilder
+# Knowledge graph removed
 from parser.enhanced_reasoner import EnhancedHybridReasoner
 from parser.answer_selector import select_answer
 
@@ -53,6 +49,28 @@ def _output_path(pdf_path: str, ext: str) -> str:
     base = os.path.splitext(os.path.basename(pdf_path))[0]
     out_dir = os.path.join(os.path.dirname(os.path.abspath(pdf_path)))
     return os.path.join(out_dir, f"{base}_qa_output.{ext}")
+
+
+try:
+    from colorama import Fore, Style, init as colorama_init
+    colorama_init()
+    _HAS_COLOR = True
+except Exception:
+    Fore = Style = None
+    _HAS_COLOR = False
+
+
+def _warn(message: str, color: str = "yellow") -> None:
+    line = "=" * 72
+    if _HAS_COLOR:
+        color_code = Fore.YELLOW if color == "yellow" else Fore.RED
+        print(color_code + line)
+        print(color_code + message)
+        print(color_code + line + Style.RESET_ALL)
+    else:
+        print(line)
+        print(message)
+        print(line)
 
 
 def main():
@@ -68,18 +86,28 @@ def main():
 
     pipeline_start = time.time()
 
-    print(f"📄 Processing PDF: {pdf_path}")
+    print(f"Processing PDF: {pdf_path}")
     doc = extract_document_with_tables(pdf_path)
     pages = doc.get('pages', [])
+    if not pages:
+        _warn("ERROR: No pages found in the PDF. Aborting.", color="red")
+        return
+
     sentence_nodes = build_nodes(pages)
+    if not sentence_nodes:
+        _warn("ERROR: No sentence nodes were built from the PDF. Aborting.", color="red")
+        return
 
     print("🚀 Building Document Reasoning Graph...")
     drg = DocumentReasoningGraph(model_name=EMBED_MODEL)
     drg.add_nodes(sentence_nodes)
     drg.compute_embeddings()
-    drg.add_structural_edges()
+    print("Building Document Reasoning Graph...")
     drg.add_semantic_edges(threshold=0.75)
     drg.compute_graph_metrics()
+    if drg.graph.number_of_nodes() == 0:
+        _warn("ERROR: Document Reasoning Graph is empty. Aborting.", color="red")
+        return
     
     # Clear memory after DRG
     gc.collect()
@@ -88,33 +116,29 @@ def main():
     span_extractor = SpanExtractor()
     spans = span_extractor.extract_spans_from_nodes(sentence_nodes)
 
-    print("🕸️ Building Span Graph...")
+    print("Extracting spans...")
     span_graph_builder = SpanGraph(model_name=EMBED_MODEL)
     span_graph_builder.add_nodes(spans)
     span_graph_builder.compute_embeddings()
-    span_graph_builder.add_structural_edges()
+    print("Building Span Graph...")
     span_graph_builder.add_semantic_edges(threshold=0.7)
     span_graph_builder.add_discourse_edges()
     span_graph_builder.add_entity_overlap_edges()
     span_graph_builder.compute_graph_metrics()
+    if span_graph_builder.graph.number_of_nodes() == 0:
+        _warn("ERROR: Span Graph is empty. Aborting.", color="red")
+        return
 
     # Clear memory after Span Graph
     gc.collect()
 
-    print("🧠 Building Knowledge Graph...")
-    kg_builder = KnowledgeGraphBuilder()
-    kg_data = kg_builder.build_kg(spans, tables=doc.get('tables', []))
-
-    # Clear memory after KG
-    gc.collect()
-
-    print("🔍 Initializing Reasoner...")
+    _warn("WARNING: Knowledge Graph support was removed. KG step skipped.")
     reasoner = EnhancedHybridReasoner(
         sentence_graph=drg.graph,
         span_graph=span_graph_builder.graph,
-        knowledge_graph=kg_data,
         model_name=EMBED_MODEL,
     )
+    print("Initializing Reasoner...")
 
     # Document-level stats (for report)
     doc_stats = {
@@ -122,7 +146,7 @@ def main():
         "pages": len(pages),
         "sentences": drg.graph.number_of_nodes(),
         "spans": span_graph_builder.graph.number_of_nodes(),
-        "kg_entities": len(kg_data.get("entities", [])),
+        # knowledge graph removed
     }
 
     pdf_lower = os.path.basename(pdf_path).lower()
@@ -248,14 +272,17 @@ def main():
     print("=" * 72)
 
     for i, question in enumerate(questions, 1):
+        print("\n" + sep)
+        print(f"Q{i:02d}: {question}")
+
         q_start = time.time()
-        results = reasoner.enhanced_reasoning(question, k=8)
+        results = reasoner.enhanced_reasoning(question, k=5)
         final_spans = results.get("final_spans", [])
 
         answer = "No answer found"
         evidence_spans = []
         confidence = results.get("confidence", 0.0)
-        confidence_label = results.get("confidence_label", "Low ✗")
+        confidence_label = results.get("confidence_label", "Low")
 
         if final_spans:
             answer, evidence_spans, confidence, confidence_label = select_answer(
@@ -268,8 +295,6 @@ def main():
 
         elapsed = time.time() - q_start
 
-        # Console output
-        print(f"\nQ{i:02d}: {question}")
         print(f"A{i:02d}: {answer}")
         print(f"     Confidence : {confidence_label}  ({confidence:.2%})")
         print(f"     Evidence   : {len(evidence_spans)} span(s)   |  "
@@ -349,7 +374,7 @@ def main():
     json_path = _output_path(pdf_path, "json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2, cls=_NumpyEncoder)
-    print(f"\n✅ JSON output saved  → {json_path}")
+    print(f"\nJSON output saved  -> {json_path}")
 
     # Plain-text report
     txt_path = _output_path(pdf_path, "txt")
@@ -378,7 +403,7 @@ def main():
         for k, v in analysis.items():
             f.write(f"  {k:<35}: {v}\n")
 
-    print(f"✅ Text report saved  → {txt_path}\n")
+    print(f"Text report saved  -> {txt_path}\n")
 
 
 if __name__ == "__main__":

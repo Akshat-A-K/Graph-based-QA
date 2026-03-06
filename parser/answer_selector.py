@@ -103,7 +103,7 @@ def select_answer(
     """Pick the best answer span with keyword anchoring and sentence preference."""
     final_spans = results.get("final_spans", [])
     if not final_spans:
-        return "No answer found", [], 0.0, "Low ✗"
+        return "No answer found", [], 0.0, "Low"
 
     span_scores = results.get("span_scores", {})
     query_norm = normalize_text(query)
@@ -161,7 +161,7 @@ def select_answer(
         ranked.append((span_id, text, score, sentence_id, span_type, overlap))
 
     if not ranked:
-        return "No answer found", [], 0.0, "Low ✗"
+        return "No answer found", [], 0.0, "Low"
 
     ranked.sort(key=lambda x: x[2], reverse=True)
 
@@ -373,6 +373,8 @@ def select_answer(
 
     # Evidence selection
     evidence_texts = []
+    # best_score is the retrieval score of the top-ranked passage
+    best_score = ranked[0][2] if ranked else 0.0
     for _, text, score, _, _, overlap in ranked[:10]:
         if score >= best_score * 0.6 or overlap >= 1:
             evidence_texts.append(text)
@@ -380,6 +382,6 @@ def select_answer(
             break
 
     confidence = results.get("confidence", 0.5)
-    confidence_label = results.get("confidence_label", "Medium ◐")
+    confidence_label = results.get("confidence_label", "Medium")
 
     return best_text, evidence_texts, confidence, confidence_label

@@ -45,68 +45,44 @@ class EnhancedHybridReasoner:
     Uses BM25, centrality, and cross-encoder re-ranking.
     """
     
-    def __init__(
-        self,
-        sentence_graph: nx.Graph,
-        span_graph: nx.Graph,
-        knowledge_graph: Dict,
-        # multi-qa-mpnet: trained on 215M QA pairs — optimised for asymmetric
-        # question→passage retrieval. Understands semantic equivalences like
-        # "spouse"→"married to", "role"→"position", etc. far better than LaBSE.
-        model_name="sentence-transformers/multi-qa-mpnet-base-dot-v1",
-        use_cross_encoder=True
-    ):
+    def __init__(self, sentence_graph: nx.Graph, span_graph: nx.Graph,
+                 model_name="sentence-transformers/multi-qa-mpnet-base-dot-v1",
+                 use_cross_encoder=True):
         self.sentence_graph = sentence_graph
         self.span_graph = span_graph
-        self.kg = knowledge_graph
         print(f"Loading retrieval model: {model_name}")
         self.model = get_sentence_transformer(model_name)
-        print("✓ QA-optimised embeddings ready (trained on 215M question-passage pairs)")
-        
-        # Advanced components
+
         self.bm25_spans = None
         self.bm25_sentences = None
         self.span_centrality = None
         self.sentence_centrality = None
         self.query_expander = QueryExpander()
         self.hybrid_scorer = HybridScorer()
-        
-        # Cross-encoder for re-ranking (use SAME base model for efficiency)
+
         self.use_cross_encoder = use_cross_encoder
         if use_cross_encoder:
-            # Use same multilingual model for cross-encoding to save memory
-            print("✓ Using unified transformer for both embedding and re-ranking")
+            print("Using cross-encoder for re-ranking")
             try:
                 self.cross_encoder = CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1')
             except Exception:
                 self.cross_encoder = None
                 self.use_cross_encoder = False
-                print("⚠️  Cross-encoder disabled (model load failed).")
-        
-        # Stopwords for better filtering
+                print("Cross-encoder disabled (model load failed).")
+
         self.stopwords = STOP_WORDS
-        
-        # Initialize BM25 and centrality
+
         self._initialize_bm25()
         self._compute_centrality()
-        self._cache_entity_embeddings()
-        
-        print(f"Enhanced hybrid reasoner initialized:")
+
+        print("Enhanced hybrid reasoner initialized")
         print(f"  - Sentence nodes: {sentence_graph.number_of_nodes()}")
         print(f"  - Span nodes: {span_graph.number_of_nodes()}")
-        print(f"  - KG entities: {len(knowledge_graph['entities'])}")
-        print(f"  - BM25 index: ✓")
-        print(f"  - Graph centrality: ✓")
-        print(f"  - Cross-encoder: {'✓' if use_cross_encoder else '✗'}")
+        print("  - BM25 index: ready")
+        print("  - Graph centrality: ready")
+        print(f"  - Cross-encoder: {'enabled' if use_cross_encoder else 'disabled'}")
 
-    def _cache_entity_embeddings(self):
-        """Precompute KG entity embeddings for faster retrieval."""
-        entities = self.kg.get("entities", [])
-        if not entities:
-            self.entity_embeddings = []
-            return
-        texts = [entity["text"] for entity in entities]
-        self.entity_embeddings = self.model.encode(texts, show_progress_bar=False)
+    # KG entity embedding cache removed
     
     def _initialize_bm25(self):
         """Build BM25 indices for lexical matching."""
@@ -610,11 +586,11 @@ class EnhancedHybridReasoner:
         ), 1.0)
         
         if confidence > 0.7:
-            confidence_label = "High ✓"
+            confidence_label = "High"
         elif confidence > 0.45:
-            confidence_label = "Medium ◐"
+            confidence_label = "Medium"
         else:
-            confidence_label = "Low ✗"
+            confidence_label = "Low"
             
         return confidence, confidence_label
     
@@ -662,15 +638,12 @@ class EnhancedHybridReasoner:
         # Step 3: Query expansion
         expansion_results = self.retrieval_with_expansion(query, k=k*2)
         
-        # Step 4: KG-guided (reuse from original)
-        kg_entity_ids = self._kg_entity_retrieval(query, k=3)
+        # KG-guided retrieval removed
+        kg_entity_ids = []
         kg_span_ids = set()
-        for entity_id in kg_entity_ids:
-            entity = self.kg["entities"][entity_id]
-            kg_span_ids.update(entity["span_ids"])
-        
+
         # Merge all candidates
-        all_candidates = set(hybrid_results) | set(traversal_results) | set(expansion_results) | kg_span_ids
+        all_candidates = set(hybrid_results) | set(traversal_results) | set(expansion_results)
         
         # Step 5: Final scoring with all signals
         q_emb = self.embed_query(query)
@@ -719,7 +692,7 @@ class EnhancedHybridReasoner:
             in_hybrid    = 1.0 if span_id in hybrid_results    else 0.0
             in_traversal = 1.0 if span_id in traversal_results else 0.0
             in_expansion = 1.0 if span_id in expansion_results else 0.0
-            in_kg        = 1.0 if span_id in kg_span_ids       else 0.0
+            in_kg        = 0.0
 
             # Combined score — purely model/signal-driven, no domain-specific rules
             final_score = (
@@ -730,8 +703,7 @@ class EnhancedHybridReasoner:
                 0.08 * cent_score +      # Graph centrality
                 0.07 * in_hybrid +       # Multi-source voting
                 0.04 * in_traversal +
-                0.03 * in_expansion +
-                0.01 * in_kg
+                0.03 * in_expansion
             )
 
             final_scores.append((span_id, final_score))
@@ -830,8 +802,8 @@ class EnhancedHybridReasoner:
                 "hybrid_results": hybrid_results[:5],
                 "traversal_results": traversal_results[:5],
                 "expansion_results": expansion_results[:5],
-                "kg_entities": kg_entity_ids,
-                "kg_spans": list(kg_span_ids)[:5],
+                "kg_entities": [],
+                "kg_spans": [],
                 "confidence": confidence,
                 "confidence_label": "Too Low - Cannot Answer",
                 "span_scores": {}
@@ -845,32 +817,11 @@ class EnhancedHybridReasoner:
             "hybrid_results": hybrid_results[:5],
             "traversal_results": traversal_results[:5],
             "expansion_results": expansion_results[:5],
-            "kg_entities": kg_entity_ids,
-            "kg_spans": list(kg_span_ids)[:5],
+            "kg_entities": [],
+            "kg_spans": [],
             "confidence": confidence,
             "confidence_label": confidence_label,
-            "span_scores": span_score_map  # NEW: Pass scores to answer extraction
+            "span_scores": span_score_map
         }
     
-    def _kg_entity_retrieval(self, query: str, k: int = 5) -> List[int]:
-        """Retrieve relevant KG entities (from original)."""
-        q_emb = self.embed_query(query)
-
-        scores = []
-        for idx, entity in enumerate(self.kg["entities"]):
-            if idx < len(self.entity_embeddings):
-                entity_emb = self.entity_embeddings[idx]
-            else:
-                entity_emb = self.model.encode([entity["text"]])[0]
-            sim = self.cosine(q_emb, entity_emb)
-            
-            # Type-specific boost
-            bonus = 0.0
-            if "date" in entity["entity_type"].lower():
-                if any(w in query.lower() for w in ["when", "deadline", "due"]):
-                    bonus += 0.2
-            
-            scores.append((entity["entity_id"], sim + bonus))
-        
-        scores.sort(key=lambda x: x[1], reverse=True)
-        return [eid for eid, _ in scores[:k]]
+    # KG entity retrieval removed
