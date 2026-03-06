@@ -318,36 +318,24 @@ class EnhancedHybridReasoner:
         scored = []
         
         for span_id in visited:
-            # Semantic score
-            emb = self.span_graph.nodes[span_id]["embedding"]
-            sem_score = self.cosine(q_emb, emb)
+                # Semantic score
+                emb = self.span_graph.nodes[span_id]["embedding"]
+                sem_score = self.cosine(q_emb, emb)
+                
+                # Centrality bonus
+                cent_bonus = self.span_centrality.get(span_id, 0) * 0.2
+                
+                # Discourse bonus
+                text = self.span_graph.nodes[span_id]["text"]
+                text_tokens = set(tokenize(text))
+                disc_bonus = 0.0
+                if any(m in normalize_text(text) for m in ["if", "unless", "provided", "only if", "in case", "when", "except", "excluding", "but not", "other than", "apart from", "not", "no", "never", "cannot", "won't", "shouldn't"]):
+                    disc_bonus += 0.1
+                overlap_bonus = min(0.2, 0.04 * len(text_tokens & query_tokens))
+                
+                final_score = sem_score + cent_bonus + disc_bonus + overlap_bonus
+                scored.append((span_id, final_score))
             
-            # Centrality bonus
-            cent_bonus = self.span_centrality.get(span_id, 0) * 0.2
-            
-            # Discourse bonus: check for any discourse markers defined in the
-            # span graph (condition, exception, negation, contrast, etc.)
-            text = self.span_graph.nodes[span_id]["text"]
-            text_tokens = set(tokenize(text))
-            disc_bonus = 0.0
-
-            # Collect relevant marker lists from the span_graph's discourse markers
-            marker_cats = ["condition", "exception", "negation", "contrast"]
-            markers = []
-            for cat in marker_cats:
-                markers.extend(self.span_graph.discourse_markers.get(cat, []))
-
-            # Normalize markers and text before matching
-            markers_norm = [normalize_text(m) for m in markers if m]
-            text_norm = normalize_text(text)
-
-            if any(m in text_norm for m in markers_norm):
-                disc_bonus += 0.1
-            overlap_bonus = min(0.2, 0.04 * len(text_tokens & query_tokens))
-            
-            final_score = sem_score + cent_bonus + disc_bonus + overlap_bonus
-            scored.append((span_id, final_score))
-        
         scored.sort(key=lambda x: x[1], reverse=True)
         return [sid for sid, _ in scored[:k]]
     

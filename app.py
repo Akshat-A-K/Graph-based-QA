@@ -14,7 +14,6 @@ from parser.span_graph import SpanGraph
 from parser.enhanced_reasoner import EnhancedHybridReasoner
 from parser.advanced_retrieval import normalize_text, tokenize
 from parser.answer_selector import select_answer
-from parser.evaluator import QAEvaluator
 
 st.set_page_config(page_title="Graph-Based QA System", page_icon=None, layout="wide", initial_sidebar_state="expanded")
 
@@ -122,16 +121,16 @@ with st.sidebar:
     
     if uploaded_file:
         file_size_mb = len(uploaded_file.getvalue()) / (1024 * 1024)
-    st.info(f"**{uploaded_file.name}** ({file_size_mb:.1f} MB)")
+        st.info(f"📄 **{uploaded_file.name}** ({file_size_mb:.1f} MB)")
         
-    if st.button("Process PDF", use_container_width=True, type="primary"):
-        with st.spinner("Building multi-level graphs from document..."):
-            st.session_state.graphs = build_graphs_from_pdf(
-                uploaded_file.getvalue(),
-                uploaded_file.name
-            )
-            st.session_state.pdf_name = uploaded_file.name
-            st.success("Document processed successfully!")
+        if st.button("Process PDF", use_container_width=True, type="primary"):
+            with st.spinner("🔨 Building multi-level graphs from document..."):
+                st.session_state.graphs = build_graphs_from_pdf(
+                    uploaded_file.getvalue(),
+                    uploaded_file.name
+                )
+                st.session_state.pdf_name = uploaded_file.name
+            st.success("✅ Document processed successfully!")
             st.balloons()
     
     st.divider()
@@ -167,14 +166,6 @@ if st.session_state.graphs:
             key="question_input"
         )
         
-        # Optional reference answer for evaluation
-        reference_answer = st.text_input(
-            "Reference answer (optional, for EM/F1 evaluation):",
-            value="",
-            placeholder="Paste the correct answer here to evaluate predictions",
-            key="ref_answer"
-        )
-
         if question:
             with st.spinner("Searching for answer..."):
                 results = st.session_state.graphs['reasoner'].enhanced_reasoning(
@@ -200,20 +191,9 @@ if st.session_state.graphs:
                 <p style='color: #e0e0e0; font-size: 1.1rem; line-height: 1.6; margin: 0;'>{answer_clean}</p>
             </div>
             """, unsafe_allow_html=True)
-
-            # Evaluate answer
-            if reference_answer.strip():
-                eval_metrics = QAEvaluator.evaluate(answer, reference_answer.strip())
-                eval_note = "vs reference"
-            elif answer_spans:
-                eval_metrics = QAEvaluator.evaluate(answer, answer_spans[0])
-                eval_note = "vs top evidence"
-            else:
-                eval_metrics = {"exact_match": 0.0, "f1": 0.0}
-                eval_note = "no evidence"
-
+            
             # Show confidence & evidence metrics
-            col_conf1, col_conf2, col_conf3, col_conf4, col_conf5 = st.columns(5)
+            col_conf1, col_conf2, col_conf3 = st.columns(3)
             with col_conf1:
                 confidence_pct = int(confidence * 100)
                 st.metric("Confidence", f"{confidence_pct}%", confidence_label, help="Answer confidence based on evidence quality")
@@ -221,10 +201,6 @@ if st.session_state.graphs:
                 num_evidence = len(answer_spans)
                 st.metric("Evidence Spans", num_evidence, help="Number of supporting spans found")
             with col_conf3:
-                st.metric("F1 Score", f"{eval_metrics['f1']:.2f}", eval_note, help="Token-level F1 score")
-            with col_conf4:
-                st.metric("Exact Match", f"{eval_metrics['exact_match']:.2f}", eval_note, help="Exact match score (1 = perfect)")
-            with col_conf5:
                 kg_ents = len(results.get('kg_entities', []))
                 # KG metrics removed
             
@@ -234,7 +210,7 @@ if st.session_state.graphs:
             if len(answer_spans) > 1:
                 st.caption(f"Found {len(answer_spans)} supporting evidence spans")
             for i, span_text in enumerate(answer_spans[:5], 1):  # Limit to top 5
-                with st.expander(f"Evidence {i}", expanded=(i==1)):
+                with st.expander(f"📄 Evidence {i}", expanded=(i==1)):
                     st.markdown(f"```\n{span_text}\n```")
             
             # Breakdown
@@ -294,25 +270,26 @@ if st.session_state.graphs:
         - `graphs/drg_graph.png`
         - `graphs/span_graph.png`
         
-        **Graph Types:**
+        **�🔗 Graph Types:**
         - Sentence-level DRG
         - Span-level graph
+        - Knowledge graph (removed)
         
-        **Retrieval Methods:**
+        **🔍 Retrieval Methods:**
         - BM25 lexical matching
         - Semantic embeddings
         - Graph centrality
         - Query expansion
         
-        **Languages Supported:**
-        - English
+        **🌍 Languages Supported:**
+        - Hindi / Hinglish / English
         """)
 
 else:
     # Welcome screen
     st.markdown("""
     <div style='text-align: center; padding: 2rem;'>
-        <h2 style='color: #4CAF50;'>Upload a PDF document to get started!</h2>
+        <h2 style='color: #4CAF50;'>👈 Upload a PDF document to get started!</h2>
         <p style='color: #888; font-size: 1.1rem;'>Click the upload button in the sidebar to begin</p>
     </div>
     """, unsafe_allow_html=True)
@@ -320,37 +297,37 @@ else:
     # Feature highlights
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.markdown("### Multilingual")
+        st.markdown("### 🌍 Multilingual")
         st.markdown("Ask questions in **English, Hindi, or Hinglish**")
     with col2:
-        st.markdown("### Evidence-Based")
+        st.markdown("### 🎯 Evidence-Based")
         st.markdown("Get **faithful answers** with supporting text spans")
     with col3:
-        st.markdown("### Zero-Shot")
+        st.markdown("### ⚡ Zero-Shot")
         st.markdown("**No training required** - works out of the box")
     
     st.markdown("---")
     
     # How it works
-    with st.expander("How it works", expanded=True):
+    with st.expander("📖 How it works", expanded=True):
         st.markdown("""
-        ### Getting Started
+        ### 🚀 Getting Started
         
-        1. **Upload PDF**: Click the upload button in the sidebar
-        2. ** Process**: System builds multi-level graphs from the document
-        3. **Ask Questions**: Type your question in natural language
-        4. **Get Answer**: System retrieves evidence-based answers
-        5. **View Evidence**: See supporting text spans from the document
+        1. **📤 Upload PDF**: Click the upload button in the sidebar
+        2. **🔨 Process**: System builds multi-level graphs from the document
+        3. **❓ Ask Questions**: Type your question in natural language
+        4. **📌 Get Answer**: System retrieves evidence-based answers
+        5. **📋 View Evidence**: See supporting text spans from the document
         
-        ### Key Features
+        ### ✨ Key Features
         
-        - **Multilingual**: English, Hindi, Hinglish support
-        - **Zero-shot**: No training required
-        - **Graph-based**: Multi-level reasoning (sentence + span + knowledge)
-        - **Faithful**: Evidence-based answers with proper citations
-        - **Hybrid retrieval**: BM25, semantic embeddings, graph centrality
+        - 🌍 **Multilingual**: English, Hindi, Hinglish support
+        - ⚡ **Zero-shot**: No training required
+        - 📊 **Graph-based**: Multi-level reasoning (sentence + span + knowledge)
+        - 🎯 **Faithful**: Evidence-based answers with proper citations
+        - 🔍 **Hybrid retrieval**: BM25, semantic embeddings, graph centrality
         
-        ### Example Questions
+        ### 💡 Example Questions
         
         - *"What is the deadline for submission?"*
         - *"Marks kya hain isme?"* (What are the marks?)
