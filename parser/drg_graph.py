@@ -294,26 +294,3 @@ class DocumentReasoningGraph:
         plt.savefig(output_path, dpi=150, bbox_inches='tight')
         plt.close()
         print(f"✅ DRG image saved to {output_path}")
-    
-    # -------------------------
-    # BUILD FULL GRAPH
-    # -------------------------
-    def build_graph(self, nodes):
-        self.add_nodes(nodes)
-        self.compute_embeddings()
-        self.add_structural_edges()
-        self.add_semantic_edges()
-        self.compute_graph_metrics()
-
-        print("\n✅ Enhanced DRG built successfully!")
-        print(f"   📝 Nodes: {self.graph.number_of_nodes()}")
-        print(f"   🔗 Edges: {self.graph.number_of_edges()}")
-        print(f"   🏷️  Entities: {len(self.entity_map)}")
-        
-        # Edge type breakdown
-        edge_types = Counter([data.get('type', 'unknown') for _, _, data in self.graph.edges(data=True)])
-        print("\n   Edge types:")
-        for edge_type, count in edge_types.most_common():
-            print(f"      • {edge_type}: {count}")
-
-        return self.graph

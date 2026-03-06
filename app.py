@@ -71,6 +71,7 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         drg.compute_embeddings()
         drg.add_structural_edges()
         drg.add_semantic_edges(threshold=0.75)
+        drg.compute_graph_metrics()
         
         # Build span graph
         span_extractor = SpanExtractor()
