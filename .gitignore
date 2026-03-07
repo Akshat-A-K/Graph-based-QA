@@ -29,3 +29,8 @@ Thumbs.db
 *.log
 graphs/
 /.venv/
+
+hotpot_train_v1.1.json
+
+hotpot_easy_qa_output.json
+hotpot_easy_qa_output.txt
