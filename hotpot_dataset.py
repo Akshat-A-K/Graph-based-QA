@@ -142,6 +142,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--embed-model",
                         default="sentence-transformers/all-mpnet-base-v2",
                         help="Sentence-transformer model to use")
+    parser.add_argument("--level", default="easy",
+                        choices=["easy", "medium", "hard", "all"],
+                        help="HotpotQA difficulty level to run (easy/medium/hard/all)")
     parser.add_argument("--drg-threshold", type=float, default=0.75,
                         help="Cosine similarity threshold for DRG semantic edges")
     parser.add_argument("--span-threshold", type=float, default=0.70,
@@ -184,16 +187,50 @@ def main():
     with open(dataset_path, "r", encoding="utf-8") as f:
         all_data = json.load(f)
 
-    easy_questions = [item for item in all_data if item.get("level") == "easy"]
-    print(f"Total easy questions in dataset: {len(easy_questions)}")
+    levels = ["easy", "medium", "hard"]
 
-    random.seed(args.seed)
-    random.shuffle(easy_questions)
+    # If user requests all levels and a specific sample size, divide the sample equally
+    if args.level == "all" and args.num > 0:
+        pools = {lvl: [item for item in all_data if item.get("level") == lvl]
+                 for lvl in levels}
+        for lvl in levels:
+            random.shuffle(pools[lvl])
 
-    num_to_run = (len(easy_questions) if args.num == 0
-                  else min(args.num, len(easy_questions)))
-    easy_questions = easy_questions[:num_to_run]
-    print(f"Running evaluation on {num_to_run} easy questions  (seed={args.seed})\n")
+        per = args.num // 3
+        rem = args.num % 3
+        counts = {lvl: per + (1 if i < rem else 0)
+                  for i, lvl in enumerate(levels)}
+
+        selected_questions = []
+        for lvl in levels:
+            take = min(counts[lvl], len(pools[lvl]))
+            selected_questions.extend(pools[lvl][:take])
+
+        # If some levels lacked enough items, fill remaining from the leftover pool
+        needed = args.num - len(selected_questions)
+        if needed > 0:
+            leftover = []
+            for i, lvl in enumerate(levels):
+                leftover.extend(pools[lvl][counts[lvl]:])
+            random.shuffle(leftover)
+            selected_questions.extend(leftover[:needed])
+
+        num_to_run = len(selected_questions)
+        print(f"Running evaluation on {num_to_run} total questions (split across levels)  (seed={args.seed})\n")
+    else:
+        if args.level == "all":
+            selected_questions = all_data
+        else:
+            selected_questions = [item for item in all_data if item.get("level") == args.level]
+        print(f"Total '{args.level}' questions in dataset: {len(selected_questions)}")
+
+        random.seed(args.seed)
+        random.shuffle(selected_questions)
+
+        num_to_run = (len(selected_questions) if args.num == 0
+                      else min(args.num, len(selected_questions)))
+        selected_questions = selected_questions[:num_to_run]
+        print(f"Running evaluation on {num_to_run} '{args.level}' questions  (seed={args.seed})\n")
 
     # ------------------------------------------------------------------
     # Per-question evaluation loop
@@ -206,7 +243,7 @@ def main():
     print("  HOTPOTQA EASY — QA RESULTS")
     print("=" * 72)
 
-    for q_idx, item in enumerate(easy_questions, start=1):
+    for q_idx, item in enumerate(selected_questions, start=1):
         q_id        = item.get("_id", f"q{q_idx}")
         question    = item["question"]
         gold_answer = item["answer"]
