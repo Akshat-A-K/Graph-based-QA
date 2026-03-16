@@ -51,7 +51,6 @@ This is a **graph-based question answering system** that reads PDF documents and
 - Multilingual support (50+ languages)
 - **NEW:** Intelligent stopword filtering for better relevance
 - **NEW:** Model-score based answer ranking (not just overlap)
-- **NEW:** Abstain on low-confidence answers
 
 ### Use Cases
 
@@ -83,14 +82,12 @@ This is a **graph-based question answering system** that reads PDF documents and
 - **Multilingual**: Supports 50+ languages (English, Hindi, Hinglish, etc.)
 - **Zero-Shot**: No training required - works on any document
 - **Graph Visualization**: Export graphs as PNG images (NetworkX layouts)
-- **Evidence-Based**: Shows supporting text spans with confidence scores
+- **Evidence-Based**: Shows supporting text spans for every answer
 - 🎨 **Streamlit UI**: Interactive web interface for easy usage
 - **Fast Processing**: Efficient graph algorithms with NetworkX
-- 📈 **Confidence Scoring**: Automatically calculates answer confidence based on evidence quality, agreement, and consistency
 - **Query Intent Classification**: Detects question intent (WHAT, WHEN, HOW, WHERE, WHY) for targeted retrieval
 - 🔄 **Evidence Diversity**: Prefers evidence from different sections to avoid redundancy
 - ✓ **Answer Validation**: Verifies extracted answers are actually supported by retrieved evidence
-- 🚫 **Abstain Threshold**: Refuses to answer when confidence is too low (< 35%)
 
 ---
 
@@ -122,20 +119,14 @@ This is a **graph-based question answering system** that reads PDF documents and
 - Falls back to span-only for long sentences
 - Combines multiple spans intelligently
 
-**5. Abstain on Low Confidence**
-- System refuses to answer when confidence < 35% AND < 3 evidence spans
-- Prevents hallucinated or guessed answers
-- "Too Low - Cannot Answer" label shown to user
-- Better than returning wrong answers
-
-**6. Improved Span Extraction**
+**5. Improved Span Extraction**
 - Always includes full sentence as a span (better readability)
 - More comprehensive patterns for deadlines, formats, constraints
 - Better context window (50-120 chars) for important phrases
 - Avoids over-splitting into tiny fragments
 - Conservative clause splitting (only for long sentences >150 chars)
 
-**7. Unified Transformer Model**
+**6. Unified Transformer Model**
 - Uses single LaBSE model for embedding + cross-encoding
 - Reduces memory usage and load time
 - Consistent semantic space across all operations
@@ -152,8 +143,7 @@ This is a **graph-based question answering system** that reads PDF documents and
 **After (v2.1):**
 - 60-80% more coherent answers
 - 50% fewer irrelevant results
-- Abstains on truly ambiguous queries
-- Uses actual model confidence for ranking
+- More stable ranking using model scores
 
 ---
 
@@ -248,7 +238,6 @@ This is a **graph-based question answering system** that reads PDF documents and
 ┌─────────────────┐
 │  Return Answer  │
 │  + Evidence     │
-│  + Confidence   │
 └─────────────────┘
 ```
 
@@ -1075,7 +1064,7 @@ def extract_relations(self, entities: List[Entity], spans: List[Dict]) -> List[R
                             source_entity_id=ent1.entity_id,
                             target_entity_id=ent2.entity_id,
                             relation_type=rel_type,
-                            confidence=0.8
+                            score=0.8
                         )
                         relations.append(relation)
                         relation_id += 1
@@ -1103,7 +1092,7 @@ def _build_nx_graph(self, entities: List[Entity], relations: List[Relation]):
             relation.source_entity_id,
             relation.target_entity_id,
             type=relation.relation_type,
-            confidence=relation.confidence
+            score=relation.score
         )
 ```
 
@@ -1459,7 +1448,6 @@ def _query_expansion_retrieval(self, query: str, k: int) -> List[int]:
 
 **Edge Attributes (Relations):**
 - `type`: One of 7 types
-- `confidence`: 0.0-1.0
 
 **Relation Types (7):**
 1. **TEMPORAL**: before, after, until, by
@@ -1946,30 +1934,7 @@ pip list | grep -E "(networkx|sentence-transformers|streamlit|pymupdf)"
 
 This release includes several high-impact improvements designed to boost answer accuracy and reliability:
 
-### 1. Confidence Scoring
-
-Automatically calculates answer confidence (0-100%) based on:
-- **Score Quality (40%)**: How high are the retrieval scores?
-- **Evidence Agreement (40%)**: Multiple sources supporting the same answer?
-- **Score Consistency (20%)**: Are the top evidence spans similar in quality?
-
-**Example Output:**
-```
-Answer: "March 5, 2024"
-Confidence: 88% High ✓
-Evidence Spans: 3 from different sections
-```
-
-**Implementation:**
-```python
-def calculate_confidence(span_ids, scores) -> Tuple[float, str]:
-    score_confidence = min(avg_score, 1.0)      # 40% weight
-    evidence_confidence = min(num_sources / 3.0, 1.0) # 40% weight
-    consistency_confidence = 1.0 - score_std    # 20% weight
-    return combined_confidence, label
-```
-
-### 2. Evidence Diversity
+### 1. Evidence Diversity
 
 Avoids redundant evidence by preferring spans from **different document sections**:
 

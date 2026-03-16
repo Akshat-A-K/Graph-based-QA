@@ -286,11 +286,9 @@ def main():
 
         answer = "No answer found"
         evidence_spans = []
-        confidence = results.get("confidence", 0.0)
-        confidence_label = results.get("confidence_label", "Low")
 
         if final_spans:
-            answer, evidence_spans, confidence, confidence_label = select_answer(
+            answer, evidence_spans = select_answer(
                 results,
                 span_graph_builder,
                 question,
@@ -321,7 +319,6 @@ def main():
         )
 
         print(f"A{i:02d}: {answer}")
-        print(f"     Confidence : {confidence_label}  ({confidence:.2%})")
         print(f"     Eval       : EM={eval_metrics['exact_match']:.2f}  F1={eval_metrics['f1']:.2f}  (vs top evidence)")
         print(f"     Retrieval  : Recall@5={recall_at_5:.2f}")
         print(f"     Reasoning  : Depth={reasoning_depth}")
@@ -339,8 +336,6 @@ def main():
             "q_num": i,
             "question": question,
             "answer": answer,
-            "confidence": round(confidence, 4),
-            "confidence_label": confidence_label,
             "time_s": round(elapsed, 3),
             "evidence_count": len(evidence_spans),
             "evidence_spans": evidence_spans[:3],
@@ -364,10 +359,6 @@ def main():
     # Summary analysis
     # -----------------------------------------------------------------------
     answered = [r for r in qa_records if r["answer"] != "No answer found"]
-    avg_conf = sum(r["confidence"] for r in answered) / max(len(answered), 1)
-    high_conf = sum(1 for r in answered if r["confidence"] >= 0.7)
-    med_conf  = sum(1 for r in answered if 0.45 <= r["confidence"] < 0.7)
-    low_conf  = sum(1 for r in answered if r["confidence"] < 0.45)
     avg_time  = sum(r["time_s"] for r in qa_records) / max(len(qa_records), 1)
     avg_f1    = sum(r["eval_vs_evidence"]["f1"] for r in answered) / max(len(answered), 1)
     avg_em    = sum(r["eval_vs_evidence"]["exact_match"] for r in answered) / max(len(answered), 1)
@@ -378,8 +369,6 @@ def main():
         "answered": len(answered),
         "unanswered": len(qa_records) - len(answered),
         "answer_rate_pct": round(len(answered) / max(len(qa_records), 1) * 100, 1),
-        "avg_confidence": round(avg_conf, 4),
-        "confidence_distribution": {"high": high_conf, "medium": med_conf, "low": low_conf},
         "avg_f1_vs_evidence": round(avg_f1, 4),
         "avg_em_vs_evidence": round(avg_em, 4),
         "avg_time_per_question_s": round(avg_time, 3),
@@ -394,8 +383,6 @@ def main():
     print(f"  Total questions : {analysis['total_questions']}")
     print(f"  Answered        : {analysis['answered']}  ({analysis['answer_rate_pct']}%)")
     print(f"  Unanswered      : {analysis['unanswered']}")
-    print(f"  Avg confidence  : {analysis['avg_confidence']:.2%}")
-    print(f"  Confidence dist : High={high_conf}  Medium={med_conf}  Low={low_conf}")
     print(f"  Avg F1 (vs evid): {analysis['avg_f1_vs_evidence']:.4f}")
     print(f"  Avg EM (vs evid): {analysis['avg_em_vs_evidence']:.4f}")
     print(f"  Avg Recall@5  : {analysis['avg_recall_at_5']:.4f}")
@@ -437,7 +424,6 @@ def main():
         for r in qa_records:
             f.write(f"\nQ{r['q_num']:02d}: {r['question']}\n")
             f.write(f"A{r['q_num']:02d}: {r['answer']}\n")
-            f.write(f"    Confidence : {r['confidence_label']}  ({r['confidence']:.2%})\n")
             f.write(f"    Eval       : EM={r['eval_vs_evidence']['exact_match']:.4f}  F1={r['eval_vs_evidence']['f1']:.4f}  (vs top evidence)\n")
             f.write(f"    Evidence   : {r['evidence_count']} span(s)\n")
             f.write(f"    Time       : {r['time_s']}s\n")

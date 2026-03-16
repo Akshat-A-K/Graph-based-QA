@@ -310,11 +310,9 @@ def main():
 
         answer           = "No answer found"
         evidence_spans   = []
-        confidence       = results.get("confidence", 0.0)
-        confidence_label = results.get("confidence_label", "Low")
 
         if final_spans:
-            answer, evidence_spans, confidence, confidence_label = select_answer(
+            answer, evidence_spans = select_answer(
                 results,
                 span_graph_builder,
                 question,
@@ -342,7 +340,7 @@ def main():
         )
 
         _cprint(f"Predicted: {answer}", "green" if em == 1.0 else "yellow")
-        print(f"EM={em:.0f}  F1={f1:.2f}  Conf={confidence_label}({confidence:.2%})"
+        print(f"EM={em:.0f}  F1={f1:.2f}"
               f"  Depth={reasoning_depth}  Time={elapsed:.2f}s")
         print(sep)
 
@@ -355,8 +353,6 @@ def main():
             "predicted_answer": answer,
             "exact_match":      em,
             "f1":               f1,
-            "confidence":       round(confidence, 4),
-            "confidence_label": confidence_label,
             "time_s":           round(elapsed, 3),
             "evidence_count":   len(evidence_spans),
             "evidence_spans":   evidence_spans[:3],
@@ -394,10 +390,6 @@ def main():
 
     avg_em   = sum(r["exact_match"] for r in qa_records) / max(total_q, 1)
     avg_f1   = sum(r["f1"] for r in qa_records) / max(total_q, 1)
-    avg_conf = sum(r["confidence"] for r in answered) / max(len(answered), 1)
-    high_conf = sum(1 for r in answered if r["confidence"] >= 0.70)
-    med_conf  = sum(1 for r in answered if 0.45 <= r["confidence"] < 0.70)
-    low_conf  = sum(1 for r in answered if r["confidence"] < 0.45)
     avg_time  = sum(r["time_s"] for r in qa_records) / max(total_q, 1)
     avg_depth = sum(r["reasoning_depth"] for r in answered) / max(len(answered), 1)
 
@@ -422,8 +414,6 @@ def main():
         "answer_rate_pct":         round(len(answered) / max(total_q, 1) * 100, 1),
         "exact_match":             round(avg_em, 4),
         "f1":                      round(avg_f1, 4),
-        "avg_confidence":          round(avg_conf, 4),
-        "confidence_distribution": {"high": high_conf, "medium": med_conf, "low": low_conf},
         "em_by_type":              {k: round(v, 4) for k, v in type_em.items()},
         "f1_by_type":              {k: round(v, 4) for k, v in type_f1.items()},
         "avg_reasoning_depth":     round(avg_depth, 2),
@@ -440,8 +430,6 @@ def main():
     print(f"  F1 Score             : {avg_f1:.4f}  ({avg_f1*100:.1f}%)")
     print(f"  EM bridge / compare  : {type_em['bridge']:.4f} / {type_em['comparison']:.4f}")
     print(f"  F1 bridge / compare  : {type_f1['bridge']:.4f} / {type_f1['comparison']:.4f}")
-    print(f"  Avg confidence       : {avg_conf:.2%}")
-    print(f"  Confidence dist      : High={high_conf}  Med={med_conf}  Low={low_conf}")
     print(f"  Avg reasoning depth  : {avg_depth:.2f}")
     print(f"  Avg time / question  : {avg_time:.2f}s")
     print(f"  Total pipeline time  : {total_time/60:.1f}min  ({total_time:.0f}s)")
@@ -481,7 +469,6 @@ def main():
             f.write(f"  Gold     : {r['gold_answer']}\n")
             f.write(f"  Predicted: {r['predicted_answer']}\n")
             f.write(f"  EM={r['exact_match']:.0f}  F1={r['f1']:.4f}"
-                    f"  Conf={r['confidence_label']}({r['confidence']:.2%})"
                     f"  Time={r['time_s']}s\n")
             if r["evidence_spans"]:
                 f.write(f"  Top evid : {r['evidence_spans'][0][:120].strip()}...\n")

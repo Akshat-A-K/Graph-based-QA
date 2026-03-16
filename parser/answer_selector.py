@@ -55,7 +55,7 @@ def _strip_section_prefix(text: str) -> str:
 def _qa_extract(question: str, context: str, qa_pipeline) -> Tuple[str, float]:
     """Run an extractive-QA model to find the precise answer span in *context*.
 
-    Returns (answer_text, confidence_score).  Falls back to ("", 0.0) on any
+    Returns (answer_text, score). Falls back to ("", 0.0) on any
     error so that callers can degrade gracefully.
     """
     if not context or not question:
@@ -64,7 +64,7 @@ def _qa_extract(question: str, context: str, qa_pipeline) -> Tuple[str, float]:
         results_list = qa_pipeline(question=question, context=context, max_answer_len=200, top_k=3)
         if not isinstance(results_list, list):
             results_list = [results_list]
-        # Pick the candidate with the highest confidence score.
+        # Pick the candidate with the highest score.
         # Using top_k>1 avoids committing to a single span and allows the model
         # to surface longer or more complete answer spans as alternatives.
         best = max(results_list, key=lambda r: float(r.get("score", 0.0)))
@@ -99,11 +99,11 @@ def select_answer(
     query: str,
     reasoner=None,
     max_length: int = 300
-) -> Tuple[str, List[str], float, str]:
+) -> Tuple[str, List[str]]:
     """Pick the best answer span with keyword anchoring and sentence preference."""
     final_spans = results.get("final_spans", [])
     if not final_spans:
-        return "No answer found", [], 0.0, "Low"
+        return "No answer found", []
 
     span_scores = results.get("span_scores", {})
     query_norm = normalize_text(query)
@@ -161,7 +161,7 @@ def select_answer(
         ranked.append((span_id, text, score, sentence_id, span_type, overlap))
 
     if not ranked:
-        return "No answer found", [], 0.0, "Low"
+        return "No answer found", []
 
     ranked.sort(key=lambda x: x[2], reverse=True)
 
@@ -287,7 +287,7 @@ def select_answer(
         # better secondary context can still take over.
         OVERRIDE_MARGIN_HIGH = 0.20  # applied when primary_qa_score >= 0.45
         OVERRIDE_MARGIN_LOW  = 0.05  # applied when primary context is uncertain
-        primary_qa_score = 0.0  # QA confidence from contexts[0]
+        primary_qa_score = 0.0  # QA score from contexts[0]
         for i, ctx in enumerate(contexts):
             answer, score = _qa_extract(query, _strip_section_prefix(ctx), qa_pipeline)
             if i == 0:
@@ -305,8 +305,8 @@ def select_answer(
                     best_qa_answer = answer
 
         # Pass 2 — concatenate top-5 contexts into one larger window.
-        # Only runs when Pass 1 is low-confidence (< 0.35); if a single context
-        # already gave a confident answer, don't dilute it by mixing contexts.
+        # Only runs when Pass 1 is low-score (< 0.35); if a single context
+        # already gave a strong answer, don't dilute it by mixing contexts.
         if best_qa_score < 0.35:
             combined_parts = [_strip_section_prefix(c)[:350] for c in contexts[:5] if c]
             combined_ctx = " ".join(combined_parts)
@@ -317,8 +317,8 @@ def select_answer(
                     best_qa_answer = answer
 
         # Pass 3 — global BM25 search over every sentence in the document.
-        # Only runs when the current best answer is low-confidence (< 0.50).
-        # A confident Pass-1 answer (≥ 0.50) is treated as correct and BM25
+        # Only runs when the current best answer is low-score (< 0.50).
+        # A strong Pass-1 answer (≥ 0.50) is treated as correct and BM25
         # is skipped so that keyword-matched-but-wrong sentences cannot corrupt
         # an already-good extraction.
         # BM25 is purely frequency-based with no domain knowledge, so this
@@ -354,7 +354,7 @@ def select_answer(
             except Exception:
                 pass
 
-        # Accept the QA answer when it has reasonable confidence
+        # Accept the QA answer when it has a reasonable score
         if best_qa_answer and best_qa_score >= 0.05:
             best_text = best_qa_answer
     except Exception:
@@ -381,7 +381,4 @@ def select_answer(
         if len(evidence_texts) >= 3:
             break
 
-    confidence = results.get("confidence", 0.5)
-    confidence_label = results.get("confidence_label", "Medium")
-
-    return best_text, evidence_texts, confidence, confidence_label
+    return best_text, evidence_texts
