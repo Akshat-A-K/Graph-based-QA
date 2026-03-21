@@ -46,6 +46,9 @@ class BM25Retriever:
     
     def fit(self, documents: List[str]):
         """Build BM25 index."""
+        if not documents:           # ← guard
+            self.avgdl = 0
+            return
         self.docs = documents
         tokenized = [tokenize(doc) for doc in documents]
         self.doc_len = [len(tokens) for tokens in tokenized]
@@ -267,15 +270,11 @@ class EdgeWeighting:
         
         weight = 0.0
         
-        for marker_type, markers in discourse_markers.items():
-            has_marker_1 = any(m in text1_lower for m in markers)
-            has_marker_2 = any(m in text2_lower for m in markers)
-            
-            if has_marker_1 or has_marker_2:
-                weight += 0.3
-            
-            if has_marker_1 and has_marker_2:
-                weight += 0.4
-        
-        return min(weight, 1.0)
-    
+        for marker_type, patterns in discourse_markers.items():
+                m1 = any(re.search(p, node1_text, re.IGNORECASE) for p in patterns)
+                m2 = any(re.search(p, node2_text, re.IGNORECASE) for p in patterns)
+                if m1 and m2:
+                    weight += 0.4
+                elif m1 or m2:
+                    weight += 0.15   # reduced from 0.3
+        return min(weight, 1.0)  

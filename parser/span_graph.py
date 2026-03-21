@@ -1,4 +1,7 @@
-"""Span graph builder"""
+"""
+Enhanced Span Graph Builder
+Advanced discourse relations, coreference, semantic clustering, and visualization export
+"""
 
 import json
 import networkx as nx
@@ -16,8 +19,8 @@ matplotlib.use('Agg')  # Non-interactive backend
 class SpanGraph:
     """Build and manage enhanced span-level document graph."""
 
-    def __init__(self, model_name="sentence-transformers/all-mpnet-base-v2"):
-        print("Initializing Enhanced Span Graph Builder...")
+    def __init__(self, model_name="sentence-transformers/multi-qa-mpnet-base-dot-v1"):
+        print("🔗 Initializing Enhanced Span Graph Builder...")
         self.model = get_sentence_transformer(model_name)
         self.graph = nx.DiGraph()  # Directed for better reasoning
         
@@ -45,10 +48,97 @@ class SpanGraph:
                 sentence_id=span["sentence_id"],
                 entities=span.get("entities", [])
             )
-    
+
+    def add_entity_nodes(self):
+        """Create entity nodes and connect spans to them."""
+        entity_to_node = {}
+
+        for node_id in list(self.graph.nodes):
+            node_data = self.graph.nodes[node_id]
+            if node_data.get("span_type") == "entity_node":
+                continue
+
+            entities = node_data.get("entities", [])
+            for ent in entities:
+                ent = str(ent).lower().strip()
+
+                # remove invalid entities
+                if not ent or len(ent) < 2:
+                    continue
+
+                if ent not in entity_to_node:
+                    ent_id = f"entity::{ent}"
+                    self.graph.add_node(
+                        ent_id,
+                        text=ent,
+                        span_type="entity_node",
+                        page=-1,
+                        section="GLOBAL",
+                        sentence_id=-1,
+                        entities=[]
+                    )
+                    entity_to_node[ent] = ent_id
+
+                ent_id = entity_to_node[ent]
+
+                # span → entity
+                if not self.graph.has_edge(node_id, ent_id):
+                    self.graph.add_edge(
+                        node_id,
+                        ent_id,
+                        type="mentions",
+                        weight=1.0
+                    )
+
+                # entity → span
+                if not self.graph.has_edge(ent_id, node_id):
+                    self.graph.add_edge(
+                        ent_id,
+                        node_id,
+                        type="mentioned_in",
+                        weight=1.0
+                    )
+    def add_entity_entity_edges(self):
+        """
+        Connect entity nodes that appear in the same span.
+        This creates entity-entity relationships (GraphRAG style).
+        """
+
+        print("🔗 Adding entity → entity relations...")
+
+        edge_count = 0
+
+        # iterate over span nodes only
+        for node_id, data in self.graph.nodes(data=True):
+
+            if data.get("span_type") == "entity_node":
+                continue
+
+            entities = data.get("entities", [])
+
+            if len(entities) < 2:
+                continue
+
+            # limit entity connections per span to at most 2 entities
+            max_relations = min(2, len(entities))
+
+            for i in range(max_relations):
+                for j in range(i + 1, max_relations):
+                    e1 = f"entity::{entities[i].lower().strip()}"
+                    e2 = f"entity::{entities[j].lower().strip()}"
+
+                    if self.graph.has_node(e1) and self.graph.has_node(e2):
+                        if not self.graph.has_edge(e1, e2):
+                            self.graph.add_edge(e1, e2, type="entity_relation", weight=0.9)
+                            edge_count += 1
+
+                        if not self.graph.has_edge(e2, e1):
+                            self.graph.add_edge(e2, e1, type="entity_relation", weight=0.9)
+
+        print(f"  ✓ Added {edge_count} entity-entity edges")
     def compute_embeddings(self):
         """Compute embeddings and importance scores for all spans."""
-        print("Computing span embeddings and importance...")
+        print("📊 Computing span embeddings and importance...")
         texts = [self.graph.nodes[n]["text"] for n in self.graph.nodes]
         embeddings = self.model.encode(texts, show_progress_bar=True)
         
@@ -60,90 +150,91 @@ class SpanGraph:
             self.graph.nodes[node_id]["length"] = len(texts[i])
     
     def add_structural_edges(self):
-        """Add enhanced structural edges based on document structure."""
-        print("Adding structural edges...")
-        
-        nodes = list(self.graph.nodes)
-        
+        """Add strong structural edges only (for QA reasoning)."""
+
+        print("🔗 Adding structural edges...")
+
+        nodes = [
+            n for n in self.graph.nodes
+            if self.graph.nodes[n].get("span_type") != "entity_node"
+        ]
+
+        edge_count = 0
+
         for i in range(len(nodes)):
             n1 = nodes[i]
             d1 = self.graph.nodes[n1]
-            
+
             for j in range(i + 1, len(nodes)):
                 n2 = nodes[j]
                 d2 = self.graph.nodes[n2]
-                
-                # Same sentence (bidirectional, high weight)
+
+                # same sentence (very strong)
                 if d1["sentence_id"] == d2["sentence_id"]:
                     self.graph.add_edge(n1, n2, type="same_sentence", weight=1.0)
                     self.graph.add_edge(n2, n1, type="same_sentence", weight=1.0)
-                
-                # Sequential spans (directed)
-                elif n2 - n1 == 1:
+                    edge_count += 2
+
+                # sequential spans (sentence order)
+                elif isinstance(n1, int) and isinstance(n2, int) and (n2 - n1 == 1):
                     self.graph.add_edge(n1, n2, type="sequential", weight=0.9)
                     self.graph.add_edge(n2, n1, type="backward", weight=0.7)
-                
-                # Same section (bidirectional)
-                elif d1["section"] == d2["section"] and d1["section"] != "GLOBAL":
-                    self.graph.add_edge(n1, n2, type="same_section", weight=0.5)
-                    self.graph.add_edge(n2, n1, type="same_section", weight=0.5)
-                
-                # Same page
-                elif d1["page"] == d2["page"]:
-                    self.graph.add_edge(n1, n2, type="same_page", weight=0.3)
-                    self.graph.add_edge(n2, n1, type="same_page", weight=0.3)
-                
-                # Proximity (within 5 spans)
-                if 1 < abs(n1 - n2) <= 5:
-                    proximity_weight = 1.0 / abs(n1 - n2)
-                    self.graph.add_edge(n1, n2, type="proximity", weight=proximity_weight)
-                    self.graph.add_edge(n2, n1, type="proximity", weight=proximity_weight)
+                    edge_count += 2
+
+        print(f"  ✓ Added {edge_count} structural edges")
     
-    def add_semantic_edges(self, threshold=0.7):
-        """Add semantic similarity edges with adaptive thresholding."""
-        print("Adding semantic edges...")
-        
+    def add_semantic_edges(self, threshold=0.75, max_neighbors=3):
+        """Add semantic similarity edges with adaptive thresholding and neighbor cap.
+
+        Keeps only the top `max_neighbors` neighbors per node (above threshold)
+        to avoid near-complete connectivity.
+        """
+        print("🧠 Adding semantic edges...")
+
         node_ids = list(self.graph.nodes)
         embeddings = [self.graph.nodes[n]["embedding"] for n in node_ids]
-        
+
         sim_matrix = cosine_similarity(embeddings)
-        
-        # Adaptive threshold based on distribution
+
+        # Adaptive threshold based on distribution (higher percentile reduces noise)
         all_sims = [sim_matrix[i][j] for i in range(len(node_ids)) for j in range(i + 1, len(node_ids))]
         if all_sims:
             dynamic_threshold = max(threshold, np.percentile(all_sims, 80))
         else:
             dynamic_threshold = threshold
-        
+
         edge_count = 0
+        # For each node, select top neighbors above dynamic_threshold up to max_neighbors
         for i in tqdm(range(len(node_ids)), desc="Semantic edges"):
-            for j in range(i + 1, len(node_ids)):
-                sim = sim_matrix[i][j]
-                
-                if sim >= dynamic_threshold:
-                    # Don't duplicate if already connected
-                    if not self.graph.has_edge(node_ids[i], node_ids[j]):
-                        self.graph.add_edge(
-                            node_ids[i],
-                            node_ids[j],
-                            type="semantic",
-                            weight=float(sim)
-                        )
-                        self.graph.add_edge(
-                            node_ids[j],
-                            node_ids[i],
-                            type="semantic",
-                            weight=float(sim)
-                        )
-                        edge_count += 1
-        
-        print(f"Added {edge_count} semantic edge pairs")
+            sims = []
+            for j in range(len(node_ids)):
+                if i == j:
+                    continue
+                sims.append((j, float(sim_matrix[i][j])))
+
+            # Filter by threshold then sort
+            filtered = [p for p in sims if p[1] >= dynamic_threshold]
+            filtered.sort(key=lambda x: x[1], reverse=True)
+            # Cap neighbors
+            topk = filtered[:max_neighbors]
+
+            for j, sim in topk:
+                src = node_ids[i]
+                tgt = node_ids[j]
+                if not self.graph.has_edge(src, tgt):
+                    self.graph.add_edge(src, tgt, type="semantic", weight=sim)
+                    edge_count += 1
+                # also add reverse if missing (keeps reasoning symmetric)
+                if not self.graph.has_edge(tgt, src):
+                    self.graph.add_edge(tgt, src, type="semantic", weight=sim)
+
+        print(f"  ✓ Added {edge_count} semantic edges")
     
     def add_discourse_edges(self):
         """Add enhanced discourse relation edges."""
-        print("Adding discourse edges...")
+        print("💬 Adding discourse edges...")
         
-        nodes = list(self.graph.nodes)
+        nodes = [n for n in self.graph.nodes if self.graph.nodes[n].get("span_type") != "entity_node"]
         edge_count = 0
         
         for node_id in nodes:
@@ -179,11 +270,11 @@ class SpanGraph:
                                 )
                                 edge_count += 1
         
-        print(f"Added {edge_count} discourse edges")
+        print(f"  ✓ Added {edge_count} discourse edges")
 
     def add_entity_overlap_edges(self):
         """Connect spans that share extracted entities."""
-        print("Adding entity overlap edges...")
+        print("🔗 Adding entity overlap edges...")
         entity_map = defaultdict(list)
 
         for node_id in self.graph.nodes:
@@ -204,11 +295,11 @@ class SpanGraph:
                     self.graph.add_edge(n2, n1, type="entity", weight=0.8, entity=ent)
                     edge_count += 1
 
-        print(f"Added {edge_count} entity edge pairs")
+        print(f"  ✓ Added {edge_count} entity edge pairs")
     
     def compute_graph_metrics(self):
         """Compute centrality and importance metrics for spans."""
-        print("Computing graph metrics...")
+        print("📈 Computing graph metrics...")
         
         # PageRank for global importance
         try:
@@ -251,7 +342,23 @@ class SpanGraph:
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
         
-        print(f"Span graph exported to {output_path}")
+        print(f"✅ Span graph exported to {output_path}")
+    
+    def export_graph_graphml(self, output_path: str):
+        """Export span graph to GraphML for Gephi/Cytoscape."""
+        # Create a copy without numpy arrays and lists for GraphML export
+        export_graph = self.graph.copy()
+        for node in export_graph.nodes():
+            # Remove or convert non-GraphML compatible attributes
+            if 'embedding' in export_graph.nodes[node]:
+                del export_graph.nodes[node]['embedding']
+            if 'discourse_types' in export_graph.nodes[node]:
+                # Convert list to string
+                discourse_list = export_graph.nodes[node]['discourse_types']
+                export_graph.nodes[node]['discourse_types'] = ','.join(discourse_list) if discourse_list else ''
+        
+        nx.write_graphml(export_graph, output_path)
+        print(f"✅ Span graph exported to {output_path}")
     
     def export_graph_image(self, output_path: str, figsize=(14, 12)):
         """Export span graph as image visualization."""
@@ -290,4 +397,42 @@ class SpanGraph:
         plt.tight_layout()
         plt.savefig(output_path, dpi=150, bbox_inches='tight')
         plt.close()
-        print(f"Span graph image saved to {output_path}")
+        print(f"✅ Span graph image saved to {output_path}")
+    
+    def build_graph(self, spans: List[Dict]):
+        """Build complete enhanced span graph."""
+        self.add_nodes(spans)
+        self.add_entity_nodes()
+        self.add_entity_entity_edges() 
+        self.compute_embeddings()
+        self.add_structural_edges()
+        self.add_semantic_edges()
+        self.add_discourse_edges()
+        self.add_entity_overlap_edges()
+        self.compute_graph_metrics()
+        
+        print("\n✅ Enhanced Span Graph built successfully!")
+        print(f"   🔤 Nodes: {self.graph.number_of_nodes()}")
+        print(f"   🔗 Edges: {self.graph.number_of_edges()}")
+        
+        # Edge type breakdown
+        edge_types = Counter([data.get('type', 'unknown') for _, _, data in self.graph.edges(data=True)])
+        print("\n   Edge types:")
+        for edge_type, count in edge_types.most_common():
+            print(f"      • {edge_type}: {count}")
+        
+        return self.graph
+
+
+def build_span_graph(spans: List[Dict]) -> nx.Graph:
+    """
+    Main entry point: build span graph from spans.
+    
+    Args:
+        spans: List of span nodes from span_extractor.build_span_nodes()
+    
+    Returns:
+        NetworkX graph with span-level nodes and edges
+    """
+    sg = SpanGraph()
+    return sg.build_graph(spans)

@@ -10,6 +10,7 @@ from parser.drg_nodes import build_nodes
 from parser.drg_graph import DocumentReasoningGraph
 from parser.span_extractor import SpanExtractor
 from parser.span_graph import SpanGraph
+from parser.knowledge_graph import KnowledgeGraph
 
 from parser.enhanced_reasoner import EnhancedHybridReasoner
 from parser.advanced_retrieval import normalize_text, tokenize
@@ -73,10 +74,17 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         span_graph_builder.add_discourse_edges()
         span_graph_builder.compute_graph_metrics()
         
+        # Build Knowledge Graph from sentences
+        sentence_texts = [node['text'] for node in sentence_nodes]
+        kg = KnowledgeGraph()
+        kg.build_graph(sentence_texts)
+        
         # Export graphs for visualization
         os.makedirs('graphs', exist_ok=True)
         span_graph_builder.export_graph_json('graphs/span_graph.json')
         span_graph_builder.export_graph_image('graphs/span_graph.png')
+        kg.export_json('graphs/knowledge_graph.json')
+        kg.export_graphml('graphs/knowledge_graph.graphml')
 
         drg.export_graph_image('graphs/drg_graph.png')
         
@@ -91,6 +99,7 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         return {
             'drg': drg,
             'span_graph': span_graph_builder,
+            'kg': kg,
             'reasoner': reasoner,
             'pages': pages,
             'sentence_nodes': sentence_nodes,
@@ -139,15 +148,16 @@ with st.sidebar:
     if st.session_state.graphs:
         st.markdown("---")
         st.markdown("### Document Statistics")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             num_sentences = st.session_state.graphs['drg'].graph.number_of_nodes()
             st.metric("Sentences", num_sentences, help="Total sentences in the document")
         with col2:
             num_spans = st.session_state.graphs['span_graph'].graph.number_of_nodes()
             st.metric("Spans", num_spans, help="Fine-grained text spans extracted")
-        
-        # Entities metric removed (knowledge graph removed)
+        with col3:
+            num_kg_nodes = st.session_state.graphs['kg'].graph.number_of_nodes()
+            st.metric("KG Nodes", num_kg_nodes, help="Knowledge graph entities")
 
 
 # Main content
@@ -231,21 +241,32 @@ if st.session_state.graphs:
                 with col_b:
                     st.markdown("**Knowledge Graph**")
                     kg_entity_ids = results.get('kg_entities', [])
-                    # KG entities metric removed
                     
                     # Get actual entity text from KG
-                    if kg_entity_ids and st.session_state.graphs.get('kg'):
+                    if st.session_state.graphs.get('kg'):
                         kg = st.session_state.graphs['kg']
-                        entity_texts = []
-                        for eid in kg_entity_ids[:5]:
-                            for entity in kg['entities']:
-                                if entity['entity_id'] == eid:
-                                    entity_texts.append(f"{entity['text']} ({entity['entity_type']})")
-                                    break
-                        if entity_texts:
-                            st.caption("**Entities used:**")
-                            for et in entity_texts:
-                                st.caption(f"• {et}")
+                        # Display top entities from KG (or matched ones if available)
+                        # For now, show top 5 entities by degree if no specific IDs provided
+                        if kg_entity_ids:
+                            # If reasoner provides specific KG entity IDs
+                            entity_texts = []
+                            for eid in kg_entity_ids[:5]:
+                                if eid in kg.graph.nodes:
+                                    entity_text = kg.graph.nodes[eid].get('text', eid)
+                                    entity_texts.append(f"{entity_text}")
+                            if entity_texts:
+                                st.caption("**Entities used:**")
+                                for et in entity_texts:
+                                    st.caption(f"• {et}")
+                        else:
+                            # Show top entities by degree
+                            top_entities = sorted(kg.graph.nodes(data=True), 
+                                                  key=lambda x: kg.graph.degree(x[0]), 
+                                                  reverse=True)[:3]
+                            if top_entities:
+                                st.caption("**Top KG Entities:**")
+                                for node_id, data in top_entities:
+                                    st.caption(f"• {data.get('text', node_id)}")
     
     with col2:
         st.header("Document Stats")
@@ -260,7 +281,11 @@ if st.session_state.graphs:
             st.session_state.graphs['span_graph'].graph.number_of_nodes(),
             help="Fine-grained text spans"
         )
-        # Entities metric removed (knowledge graph removed)
+        st.metric(
+            "KG Entities",
+            st.session_state.graphs['kg'].graph.number_of_nodes(),
+            help="Knowledge graph entities"
+        )
         
         st.divider()
         
@@ -269,11 +294,12 @@ if st.session_state.graphs:
         **Graph Visualizations:**
         - `graphs/drg_graph.png`
         - `graphs/span_graph.png`
+        - `graphs/knowledge_graph.json` / `.graphml`
         
-        **�🔗 Graph Types:**
+        **🔗 Graph Types:**
         - Sentence-level DRG
         - Span-level graph
-        - Knowledge graph (removed)
+        - Knowledge graph (triples)
         
         **🔍 Retrieval Methods:**
         - BM25 lexical matching

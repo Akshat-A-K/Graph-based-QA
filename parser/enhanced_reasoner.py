@@ -64,7 +64,7 @@ class EnhancedHybridReasoner:
         if use_cross_encoder:
             print("Using cross-encoder for re-ranking")
             try:
-                self.cross_encoder = CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1')
+                self.cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
             except Exception:
                 self.cross_encoder = None
                 self.use_cross_encoder = False
@@ -679,9 +679,11 @@ class EnhancedHybridReasoner:
             
             # Calculate meaningful overlap (excluding stopwords)
             meaningful_overlap = len(query_content_tokens & text_content_tokens)
-            
+            final_score_map = {sid: score for sid, score in final_scores}
+
             # Get semantic score for this span
-            span_semantic_score = 0.0
+            span_semantic_score = final_score_map.get(span_id, 0.0)  # O(1)
+
             for sid, score in final_scores:
                 if sid == span_id:
                     span_semantic_score = score

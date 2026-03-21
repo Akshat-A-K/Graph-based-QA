@@ -248,7 +248,7 @@ def select_answer(
             try:
                 bm25_sort = BM25Retriever()
                 bm25_sort.fit(contexts)
-                scored = bm25_sort.retrieve(query, k=len(contexts))
+                scored = bm25_sort.retrieve(query_norm, k=len(contexts))
                 if scored:
                     top_bm25_idx, top_bm25_score = scored[0]
                     # Find BM25 score of the current first context (idx 0)
@@ -336,8 +336,10 @@ def select_answer(
                     for idx, _ in bm25.retrieve(query, k=8):
                         sent_text = all_sent_texts[idx]
                         clean_sent = _strip_section_prefix(sent_text)
-                        if sent_text in contexts:
+                        contexts_set = set(contexts)
+                        if clean_sent in contexts_set:   # check clean version
                             continue
+
                         # QA on this BM25-found sentence alone
                         answer, score = _qa_extract(query, clean_sent, qa_pipeline)
                         if answer and score > best_qa_score:

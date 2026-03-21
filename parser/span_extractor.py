@@ -1,6 +1,10 @@
-"""Span-level text extraction"""
+"""
+Span-level text extraction for fine-grained document reasoning.
+Extracts meaningful text spans (phrases, clauses) beyond sentence boundaries.
+"""
 
 import re
+import spacy
 from typing import List, Dict, Tuple
 from dataclasses import dataclass, field
 
@@ -22,60 +26,31 @@ class Span:
 class SpanExtractor:
     """Extract fine-grained spans from sentences."""
     
-    def __init__(self, ner_model: str = "Davlan/bert-base-multilingual-cased-ner-hrl"):
+    def __init__(self, ner_model: str = "Jean-Baptiste/roberta-large-ner-english"):
         self.ner_model = ner_model
         self.ner_pipeline = None
         self.use_ner = True
 
         try:
-            from transformers import pipeline
-            self.ner_pipeline = pipeline(
-                "ner",
-                model=self.ner_model,
-                aggregation_strategy="simple"
-            )
+            from .model_cache import get_ner_pipeline
+            self.ner_pipeline = get_ner_pipeline(self.ner_model)
         except Exception:
             self.ner_pipeline = None
             self.use_ner = False
 
+        # initialize spaCy dependency parser (may raise if model missing)
+        try:
+            self.nlp = spacy.load("en_core_web_trf")
+            print("Loaded spaCy model for dependency parsing.")
+        except Exception:
+            self.nlp = None
+
         # Patterns for clause boundaries (more conservative to avoid over-splitting)
         self.clause_markers = [
-                r';\s+(?=[A-Z])',            # semicolon followed by capital
-                r':\s+(?=[A-Z])',            # colon followed by capital
-                r'—\s+',                     # em-dash (strong clause break)
-                r'-\s+',                     # en-dash
-                r'\)\s+(?=[A-Z])',          # closing parenthesis followed by capital
-                r',\s+(?:(?:but|however|although|while|whereas|so|then|therefore)\b)',
+            r';\s+',
+            r':\s+(?=[A-Z])',  # Only split on colon if followed by capital
         ]
         
-        # Enhanced patterns for important phrases with better coverage
-        self.important_patterns = [
-            # Deadlines and dates
-            r'\b(?:deadline|due date|last date|final date|submission date|closing date)[^.;]*?(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}(?:st|nd|rd|th)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}|23:59|11:59)',
-            r'\b\d{1,2}(?:st|nd|rd|th)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}[^.;]{0,50}',
-            r'\b(?:submission|submit|deadline|due)[^.;]{0,80}(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}:\d{2})',
-            
-            # Submission formats and file structure
-            r'\b(?:submission format|file format|file structure|directory structure|folder structure|compressed|zip file|archive)[^.;]*',
-            r'\b(?:format|structure|organization)(?:\s+of|\s+for)?\s+(?:submission|files?|assignment|project)[^.;]{0,100}',
-            
-            # Constraints and negations (keep them together with context)
-            r'\b(?:not allowed|cannot|must not|shall not|prohibited|forbidden|banned|restriction)[^.;]{0,80}',
-            r'\b(?:except|excluding|does not include|but not|other than|apart from|with the exception)[^.;]{0,100}',
-            
-            # Conditional statements (keep full condition)
-            r'\b(?:if|unless|provided that|only if|in case|on condition that)[^.;]{0,120}',
-            
-            # Requirements (with context)
-            r'\b(?:must|shall|required to|mandatory|need to|have to|should|obligatory)[^.;]{0,100}',
-            
-            # Times
-            r'\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm|AM|PM|hours?)?[^.;]{0,30}',
-            r'\b(?:23:59|11:59|00:00|noon|midnight)[^.;]{0,30}',
-            
-            # Scores and marks
-            r'\b\d+\s*(?:marks?|points?|credits?|grade|percentage|%)[^.;]{0,50}',
-        ]
     
     def extract_spans_from_sentence(
         self, 
@@ -119,7 +94,13 @@ class SpanExtractor:
                 label = str(ent.get("entity_group", "ENTITY"))
                 text = sentence[start:end].strip()
 
-                if not text or end <= start:
+                # Skip punctuation or meaningless spans
+                if (
+                    not text
+                    or end <= start
+                    or len(text) < 2
+                    or text in {".", ",", ";", ":"}
+                ):
                     continue
 
                 # Avoid overlaps with existing extracted spans
@@ -144,41 +125,32 @@ class SpanExtractor:
                     entities=[text.lower()]
                 ))
                 extracted_positions.add((start, end))
-                ner_entities.append(text.lower())
+                ner_entities.append(text.lower().strip())
                 span_id += 1
 
-        # 3. Extract important phrases (regex fallback only)
-        if not extracted_positions:
-            extracted_positions = set()
-            for pattern in self.important_patterns:
-                matches = re.finditer(pattern, sentence, re.IGNORECASE)
-                for match in matches:
-                    phrase = match.group(0).strip()
-                    if len(phrase) > 10:  # Minimum phrase length for quality
-                        # Determine phrase type
-                        phrase_type = self._classify_phrase(phrase)
-                        
-                        # Check for overlap with existing spans to avoid duplicates
-                        overlap = False
-                        for start, end in extracted_positions:
-                            if not (match.end() <= start or match.start() >= end):
-                                overlap = True
-                                break
-                        
-                        if not overlap:
-                            spans.append(Span(
-                                span_id=span_id,
-                                text=phrase,
-                                start_char=match.start(),
-                                end_char=match.end(),
-                                span_type=phrase_type,
-                                page=page,
-                                section=section,
-                                sentence_id=sentence_id,
-                                entities=[]
-                            ))
-                            extracted_positions.add((match.start(), match.end()))
-                            span_id += 1
+        # 3. Extract dependency-based spans via spaCy (noun chunks and verb clauses)
+        if self.nlp is not None:
+            try:
+                dep_spans, span_id = self._extract_dependency_spans(
+                    sentence,
+                    sentence_id,
+                    page,
+                    section,
+                    span_id
+                )
+                # Avoid overlaps with previously extracted positions
+                for sspan in dep_spans:
+                    overlap = False
+                    for s, e in extracted_positions:
+                        if not (sspan.start_char >= e or sspan.end_char <= s):
+                            overlap = True
+                            break
+                    if not overlap:
+                        spans.append(sspan)
+                        extracted_positions.add((sspan.start_char, sspan.end_char))
+            except Exception:
+                # Fallback: do nothing if spaCy fails
+                pass
         
         # 4. Only split into clauses if sentence is very long (>150 chars)
         if len(sentence) > 150:
@@ -228,31 +200,94 @@ class SpanExtractor:
             clauses = new_clauses
         
         return [c for c in clauses if c.strip()]
+
+
+    def _extract_dependency_spans(self, sentence, sentence_id, page, section, span_id):
+        spans = []
+        if self.nlp is None:
+            return spans, span_id
+
+        doc = self.nlp(sentence)
+
+        # ── noun phrases ──
+        for chunk in doc.noun_chunks:
+            text = chunk.text.strip()
+            if not text:
+                continue
+            spans.append(Span(
+                span_id=span_id,
+                text=text,
+                start_char=chunk.start_char,
+                end_char=chunk.end_char,
+                span_type="noun_phrase",
+                page=page, section=section,
+                sentence_id=sentence_id, entities=[]
+            ))
+            span_id += 1
+
+        # ── CARDINAL + head noun (moved OUTSIDE noun_chunks loop) ──
+        for token in doc:
+            if token.pos_ == "NUM" or token.ent_type_ == "CARDINAL":
+                head = token.head
+                if head.pos_ in ("NOUN", "PROPN"):
+                    subtree_tokens = sorted(
+                        [t for t in head.subtree
+                        if t.pos_ in ("NUM", "NOUN", "ADV", "ADJ", "PROPN")
+                        and t.dep_ in ("nummod", "advmod", "amod", "compound",
+                                        "ROOT", "nsubj", "dobj")],
+                        key=lambda t: t.i
+                    )
+                    if subtree_tokens:
+                        start_idx = subtree_tokens[0].idx
+                        end_idx   = subtree_tokens[-1].idx + len(subtree_tokens[-1].text)
+                    else:
+                        start_idx = min(token.idx, head.idx)
+                        end_idx   = max(token.idx + len(token.text),
+                                        head.idx   + len(head.text))
+
+                    text = sentence[start_idx:end_idx].strip()
+                    if len(text) > 2 and any(c.isdigit() for c in text):
+                        spans.append(Span(
+                            span_id=span_id,
+                            text=text,
+                            start_char=start_idx,
+                            end_char=end_idx,
+                            span_type="noun_phrase",
+                            page=page, section=section,
+                            sentence_id=sentence_id, entities=[]
+                        ))
+                        span_id += 1
+
+        # ── verb clauses (moved OUTSIDE noun_chunks loop) ──
+        for token in doc:
+            if token.pos_ == "VERB":
+                subtree = list(token.subtree)
+                if not subtree:
+                    continue
+                start = subtree[0].idx
+                end   = subtree[-1].idx + len(subtree[-1].text)
+                if start < 0 or end <= start:
+                    continue
+                clause = sentence[start:end].strip()
+                if len(clause.split()) > 2:
+                    spans.append(Span(
+                        span_id=span_id,
+                        text=clause,
+                        start_char=start, end_char=end,
+                        span_type="verb_clause",
+                        page=page, section=section,
+                        sentence_id=sentence_id, entities=[]
+                    ))
+                    span_id += 1
+
+        return spans, span_id   # ← now correctly OUTSIDE all loops
     
-    def _classify_phrase(self, phrase: str) -> str:
-        """Classify phrase type based on content."""
-        phrase_lower = phrase.lower()
-        
-        if re.search(r'\d{1,2}(?:st|nd|rd|th)?\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)', phrase_lower):
-            return "temporal"
-        
-        if re.search(r'\b(?:if|unless|except|only if|provided that)\b', phrase_lower):
-            return "condition"
-        
-        if re.search(r'\b(?:not|no|never|cannot|must not|shall not)\b', phrase_lower):
-            return "negation"
-        
-        if re.search(r'\b(?:must|shall|should|required|mandatory|obligatory)\b', phrase_lower):
-            return "requirement"
-        
-        if re.search(r'\b(?:deadline|due|submission)\b', phrase_lower):
-            return "deadline"
-        
-        return "phrase"
+    # removed regex-based phrase classifier; dependency-based extraction used instead
     
     def extract_spans_from_nodes(self, sentence_nodes: List[Dict]) -> List[Dict]:
         """Convert sentence nodes to span nodes."""
         all_spans = []
+        seen_spans = set()
         span_id = 0
         
         for sent_node in sentence_nodes:
@@ -265,18 +300,34 @@ class SpanExtractor:
             )
             
             for span in spans:
-                all_spans.append({
-                    "span_id": span.span_id,
-                    "text": span.text,
-                    "span_type": span.span_type,
-                    "page": span.page,
-                    "section": span.section,
-                    "sentence_id": span.sentence_id,
-                    "start_char": span.start_char,
-                    "end_char": span.end_char,
-                    "entities": span.entities
-                })
-                span_id += 1
+                key = (span.text.lower().strip(), span.sentence_id)
+                if key not in seen_spans:
+                    all_spans.append({
+                        "span_id": span.span_id,
+                        "text": span.text,
+                        "span_type": span.span_type,
+                        "page": span.page,
+                        "section": span.section,
+                        "sentence_id": span.sentence_id,
+                        "start_char": span.start_char,
+                        "end_char": span.end_char,
+                        "entities": span.entities
+                    })
+                    seen_spans.add(key)
+                    span_id += 1
         
         return all_spans
 
+
+def build_span_nodes(sentence_nodes: List[Dict]) -> List[Dict]:
+    """
+    Main entry point: convert sentence nodes to span nodes.
+    
+    Args:
+        sentence_nodes: List of sentence-level nodes from drg_nodes.build_nodes()
+    
+    Returns:
+        List of span-level nodes with finer granularity
+    """
+    extractor = SpanExtractor()
+    return extractor.extract_spans_from_nodes(sentence_nodes)
