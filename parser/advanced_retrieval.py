@@ -185,24 +185,6 @@ class HybridScorer:
         return combined
 
 
-class QueryExpander:
-    """Expand queries with synonyms and related terms."""
-    
-    def __init__(self):
-        pass
-    
-    def expand(self, query: str) -> List[str]:
-        """Generate query variations."""
-        return [query]
-    
-    def extract_keywords(self, query: str) -> List[str]:
-        """Extract important keywords from query."""
-        words = tokenize(query)
-        keywords = [w for w in words if len(w) > 2]
-        
-        return keywords
-
-
 class EdgeWeighting:
     """Improved edge weight calculation."""
     

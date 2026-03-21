@@ -12,7 +12,7 @@ import numpy as np
 import networkx as nx
 from sentence_transformers import CrossEncoder
 from .model_cache import get_sentence_transformer
-from typing import List, Dict, Tuple, Set
+from typing import List, Dict, Set
 
 # NLTK stopwords
 try:
@@ -33,7 +33,6 @@ from .advanced_retrieval import (
     BM25Retriever,
     GraphCentrality,
     HybridScorer,
-    QueryExpander,
     normalize_text,
     tokenize
 )
@@ -57,7 +56,6 @@ class EnhancedHybridReasoner:
         self.bm25_sentences = None
         self.span_centrality = None
         self.sentence_centrality = None
-        self.query_expander = QueryExpander()
         self.hybrid_scorer = HybridScorer()
 
         self.use_cross_encoder = use_cross_encoder
@@ -399,7 +397,7 @@ class EnhancedHybridReasoner:
         return [sid for sid, _ in ranked[:top_k]]
  
     # ========================================
-    # Evidence Diversity + Confidence
+    # Evidence Diversity
     # ========================================
     
     def mmr_rerank(
@@ -519,55 +517,6 @@ class EnhancedHybridReasoner:
                 selected_fb.append(span_id)
         return selected_fb
     
-    def calculate_confidence(self, span_ids: List[int], scores: List[float]) -> Tuple[float, str]:
-        """
-        Calculate confidence (0-1) based on evidence quality and agreement.
-        Returns (confidence_score, confidence_label)
-        """
-        if not span_ids or not scores:
-            return 0.0, "Low"
-        
-        # Score confidence: how strong are the scores?
-        avg_score = np.mean(scores) if scores else 0.0
-        max_score = max(scores) if scores else 0.0
-        # Use max score for better confidence on clear answers
-        score_confidence = min(max(max_score * 0.7 + avg_score * 0.3, 0.0), 1.0)
-        
-        # Agreement confidence: do multiple sources agree?
-        num_evidence = len(span_ids)
-        evidence_confidence = min(num_evidence / 2.5, 1.0)  # 2-3 sources = high confidence
-        
-        # Consistency confidence: are scores similar?
-        if len(scores) > 1:
-            score_std = np.std(scores)
-            consistency_confidence = max(0.0, 1.0 - score_std * 0.8)  # Less penalty for variance
-        else:
-            consistency_confidence = 0.7  # Higher default for single good answer
-        
-        # Boost for numeric/date answers (clear factual answers)
-        text_has_number = any(
-            any(char.isdigit() for char in self.span_graph.nodes[sid]['text'])
-            for sid in span_ids[:3] if sid in self.span_graph.nodes
-        )
-        numeric_boost = 0.15 if text_has_number else 0.0
-        
-        # Combined confidence
-        confidence = min((
-            score_confidence * 0.45 + 
-            evidence_confidence * 0.35 + 
-            consistency_confidence * 0.2 +
-            numeric_boost
-        ), 1.0)
-        
-        if confidence > 0.7:
-            confidence_label = "High"
-        elif confidence > 0.45:
-            confidence_label = "Medium"
-        else:
-            confidence_label = "Low"
-            
-        return confidence, confidence_label
-
     # ========================================
     # Main Enhanced Reasoning
     # ========================================
@@ -724,24 +673,8 @@ class EnhancedHybridReasoner:
         # Apply diversity filtering to avoid redundant evidence
         diverse_spans = self.get_diverse_evidence(final_spans, max_spans=k)
         
-        # Calculate confidence based on evidence quality
-        confident_scores = []
-        for span_id in diverse_spans:
-            if span_id in self.span_graph.nodes:
-                # Find score from final_scores
-                for sid, score in final_scores:
-                    if sid == span_id:
-                        confident_scores.append(score)
-                        break
-        
-        confidence, confidence_label = self.calculate_confidence(
-            diverse_spans, 
-            confident_scores if confident_scores else [0.5] * len(diverse_spans)
-        )
-        
-        # ABSTAIN THRESHOLD: Don't answer if confidence is too low
-        MIN_CONFIDENCE = 0.25  # Lowered from 0.35 to answer more often
-        if confidence < MIN_CONFIDENCE and len(diverse_spans) < 2:
+        # Keep a minimal abstain guard using evidence count only.
+        if len(diverse_spans) < 1:
             return {
                 "final_spans": [],
                 "hybrid_results": hybrid_results[:5],
@@ -749,8 +682,6 @@ class EnhancedHybridReasoner:
                 "expansion_results": expansion_results[:5],
                 "kg_entities": [],
                 "kg_spans": [],
-                "confidence": confidence,
-                "confidence_label": "Too Low - Cannot Answer",
                 "span_scores": {}
             }
         
@@ -764,7 +695,5 @@ class EnhancedHybridReasoner:
             "expansion_results": expansion_results[:5],
             "kg_entities": [],
             "kg_spans": [],
-            "confidence": confidence,
-            "confidence_label": confidence_label,
             "span_scores": span_score_map
         }

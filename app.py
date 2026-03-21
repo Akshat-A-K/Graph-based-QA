@@ -186,7 +186,7 @@ if st.session_state.graphs:
             # Display answer
             st.markdown("---")
             st.subheader("Answer")
-            answer, answer_spans, confidence, confidence_label = extract_answer_text(
+            answer, answer_spans = extract_answer_text(
                 results,
                 st.session_state.graphs['span_graph'],
                 question,
@@ -202,15 +202,12 @@ if st.session_state.graphs:
             </div>
             """, unsafe_allow_html=True)
             
-            # Show confidence & evidence metrics
-            col_conf1, col_conf2, col_conf3 = st.columns(3)
+            # Show evidence metrics
+            col_conf1, col_conf2 = st.columns(2)
             with col_conf1:
-                confidence_pct = int(confidence * 100)
-                st.metric("Confidence", f"{confidence_pct}%", confidence_label, help="Answer confidence based on evidence quality")
-            with col_conf2:
                 num_evidence = len(answer_spans)
                 st.metric("Evidence Spans", num_evidence, help="Number of supporting spans found")
-            with col_conf3:
+            with col_conf2:
                 kg_ents = len(results.get('kg_entities', []))
                 # KG metrics removed
             

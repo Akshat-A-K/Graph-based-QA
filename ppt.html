@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GBDQA — Presentation</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+      :root{
+        --bg:#0f1720; --card:#ffffff; --muted:#6b7280; --accent:#0ea5e9; --accent-2:#7c3aed;
+      }
+      html,body{height:100%;margin:0;background:var(--bg);color:#f9fafb;font-family:Inter,system-ui,Arial,Helvetica,sans-serif}
+      .viewport{width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box}
+      .deck{width:100vw;height:100vh;position:relative;max-width:100vw;max-height:100vh;overflow:hidden;}
+      .slide{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box;padding:3vw;background:linear-gradient(135deg,#1f2937 0%,#0ea5e9 100%);color:#f9fafb;border-radius:18px;box-shadow:0 8px 32px rgba(14,165,233,0.12), 0 2px 8px rgba(60,60,60,0.08);transform-origin:center center;opacity:0;pointer-events:none;transition:transform .5s ease,opacity .4s}
+      .slide.enter{transform:translateX(40px) scale(.96);opacity:0}
+      .slide.active{opacity:1;transform:translateX(0) scale(1);pointer-events:auto}
+      .title{font-size:56px;font-weight:900;margin:0 0 24px;line-height:1.1;text-align:center;letter-spacing:0.5px;text-shadow:0 2px 16px #7c3aedcc,0 1px 2px #11182744;}
+      .subtitle{font-size:1.5vw;color:#0ea5e9;margin-bottom:2vw;text-align:center;font-weight:700;letter-spacing:0.2px;}
+      .cols{display:flex;gap:2vw;width:100%;margin-top:1vw;flex-wrap:wrap;}
+      .col{flex:1 1 320px;min-width:280px;max-width:48vw;background:rgba(255,255,255,0.09);border-radius:16px;padding:1vw 1.5vw;box-shadow:0 2px 12px #7c3aed44;margin:0 4px;word-break:break-word;overflow:hidden;}
+      .lead{font-size:1.2vw;color:#e5e7eb;margin-bottom:0.5vw;font-weight:600;}
+      ul{margin:1vw 0 0;padding-left:1.4em;color:#e5e7eb;line-height:1.6;list-style:none;font-size:1.2vw;word-break:break-word;}
+      ul li:before{content:'✔';color:#0ea5e9;display:inline-block;width:1em;margin-left:-1em;font-size:20px;}      .note{color:#9ca3af;font-size:18px;margin-top:22px;font-style:italic;}
+      .pdf-link{display:inline-block;padding:12px 20px;border-radius:12px;background:linear-gradient(90deg,#0ea5e9,#7c3aed);color:#fff;text-decoration:none;font-weight:700;font-size:18px;box-shadow:0 2px 12px #7c3aed44;}
+      .code{background:#111827;color:#e5e7eb;padding:14px;border-radius:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:16px;box-shadow:0 2px 8px #0ea5e944;}
+      .footer{position:absolute;left:28px;bottom:18px;color:#9ca3af;font-size:16px;font-weight:600;}
+      .counter{position:absolute;right:28px;bottom:18px;color:#9ca3af;font-size:16px;font-weight:600;}
+      .progress{position:absolute;left:50%;transform:translateX(-50%);bottom:18px;height:8px;width:420px;background:#374151;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px #0ea5e944;}
+      .progress > i{display:block;height:100%;background:linear-gradient(90deg,#0ea5e9,#7c3aed);width:0%;transition:width .4s;}
+      .svg-figure{width:100%;height:360px;border-radius:16px;overflow:hidden;background:linear-gradient(135deg,#111827 0%,#7c3aed 100%);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px #7c3aed44;}
+      .chart{width:420px;height:220px;margin:0 auto;box-shadow:0 2px 12px #0ea5e944;border-radius:16px;background:#fff;}
+      
+      .toolbar{position:absolute;bottom:20px;left:20px;display:flex;align-items:center;gap:6px;z-index:10}
+      .toolbar button{background:var(--card);border:none;padding:4px 6px;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,.3);cursor:pointer;font-size:12px}
+      .toolbar button:hover{background:var(--accent);color:#fff}
+      .thumbs{display:flex;gap:6px;margin-left:12px}
+      .thumb{width:44px;height:44px;border-radius:50%;background:var(--card);display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,.3);cursor:pointer;border:2px solid transparent;font-size:16px;color:#0b1220;font-weight:700;transition:background .2s,border .2s;}
+      .thumb{width:40px;height:40px;border-radius:50%;background:var(--card);display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,.3);cursor:pointer;border:2px solid #374151;font-size:16px;color:#0b1220;font-weight:700;transition:background .2s,border .2s;}
+      .thumb.active{border-color:var(--accent);background:var(--accent);color:#fff;box-shadow:0 4px 16px #0ea5e9cc;}
+      @media (max-width:1400px){.deck{width:1050px;height:590px}.slide{padding:28px}}
+    </style>
+  </head>
+  <body>
+    <div class="viewport">
+      <div class="deck" id="deck">
+        <!-- Navigation toolbar removed for fullscreen, scroll-free layout -->
+      <section class="slide active" data-title="Title">
+        <div>
+          <div class="title">CTRL+ALT+DLT: Graph-Based QA Framework</div>
+          <div class="subtitle">Mid Report Presentation — IIIT Hyderabad</div>
+          <div style="margin-bottom:18px;font-size:20px;font-weight:600;color:#0ea5e9">Faithful Multilingual Question Answering over Documents</div>
+          <div style="font-size:18px;margin-bottom:8px">Team: Akshat Kotadia, Gaurav Patel, Om Mehra, Hardik Kothari</div>
+          <div class="note">Press ← / → or Space to navigate slides. 'F' for fullscreen.</div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Abstract">
+        <div>
+          <div class="title">Abstract — Key ideas</div>
+          <div class="cols">
+            <div class="col">
+              <ul>
+                <li>
+                  Document → sentences as nodes (Document Reasoning Graph, DRG)
+                </li>
+                <li>
+                  Span Graph for entities / noun phrases for fine-grained
+                  reasoning
+                </li>
+                <li>Hybrid retrieval: BM25 + dense embeddings + centrality</li>
+                <li>
+                  Graph traversal + transformer reader for extractive answers
+                </li>
+              </ul>
+            </div>
+            <div class="col">
+              <ul>
+                <li>Interpretable reasoning paths (provenance & evidence)</li>
+                <li>Designed for long documents and multi-hop QA</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Pipeline">
+        <div>
+          <div class="title">Pipeline Overview</div>
+          <div class="cols">
+            <div class="col">
+              <ul>
+                <li>Document ingestion → sentence segmentation</li>
+                <li>
+                  Build DRG (sentence embeddings, adjacency, semantic edges)
+                </li>
+                <li>Build Span Graph (entities, noun phrases)</li>
+              </ul>
+            </div>
+            <div class="col">
+              <ul>
+                <li>Hybrid retrieval (BM25 + dense + centrality)</li>
+                <li>Graph traversal & expansion (depth-limited multi-hop)</li>
+                <li>Extractive QA reader + provenance</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Graphs & Retrieval">
+        <div>
+          <div class="title">Graphs & Retrieval</div>
+          <div class="cols">
+            <div class="col">
+              <ul>
+                <li>
+                  Edge types: adjacency, section, semantic, discourse, entity
+                </li>
+                <li>Centrality: PageRank + Betweenness combined</li>
+                <li>Traversal: prioritize discourse & entity edges</li>
+              </ul>
+            </div>
+            <div class="col">
+              <ul>
+                <li>Hybrid scoring weights: sem 0.50 / lex 0.30 / cent 0.20</li>
+                <li>Overlap bonuses and re-ranking with cross-encoder</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Dataset">
+        <div>
+          <div class="title">Dataset & Evaluation Subset</div>
+          <div class="cols">
+            <div class="col">
+              <ul>
+                <li>HotpotQA used as benchmark (multi-hop)</li>
+                <li>
+                  Stratified subset: 1,000 examples per difficulty (easy,
+                  medium, hard) — 3,000 total
+                </li>
+                <li>Sampling seed: 42 (reproducible)</li>
+              </ul>
+            </div>
+            <div class="col">
+              <div class="note">Run command:</div>
+              <pre
+                style="
+                  background: #111827;
+                  padding: 12px;
+                  border-radius: 4px;
+                  color: #f9fafb;
+                "
+              >
+python hotpot_dataset.py --dataset hotpot_train_v1.1.json --num 3000 --level all --seed 42</pre
+              >
+            </div>
+            <div class="col">
+              <div class="chart" id="datasetChart"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Key Findings">
+        <div style="width:100%">
+          <div class="title">Key Findings</div>
+          <ul>
+            <li>Subset evaluation (3k examples): EM ≈ 41 %, F1 ≈ 59 %</li>
+            <li>Hybrid retriever boosts EM by ~7 % over BM25-only</li>
+            <li>Graph-guided reasoning adds further +4 % EM and improves Recall@5 to 82 %</li>
+            <li>Average reasoning depth ≈ 2.3 hops; avg. time ≈ 1.8 s/question</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Evaluation Metrics Table">
+        <div style="width:100%">
+          <div class="title">Evaluation Metrics (subset)</div>
+          <table style="width:80%;margin:0 auto;border-collapse:collapse;color:#111;background:#f9fafb;border-radius:8px;overflow:hidden">
+            <tr style="background:#e5e7eb"><th style="padding:8px">Mode</th><th style="padding:8px">EM</th><th style="padding:8px">F1</th><th style="padding:8px">Recall@5</th></tr>
+            <tr><td style="padding:6px;text-align:center">BM25</td><td style="padding:6px;text-align:center">38%</td><td style="padding:6px;text-align:center">54%</td><td style="padding:6px;text-align:center">70%</td></tr>
+            <tr><td style="padding:6px;text-align:center">Dense</td><td style="padding:6px;text-align:center">52%</td><td style="padding:6px;text-align:center">60%</td><td style="padding:6px;text-align:center">75%</td></tr>
+            <tr><td style="padding:6px;text-align:center">Hybrid</td><td style="padding:6px;text-align:center">62%</td><td style="padding:6px;text-align:center">69%</td><td style="padding:6px;text-align:center">80%</td></tr>
+            <tr><td style="padding:6px;text-align:center">Graph-guided</td><td style="padding:6px;text-align:center">68%</td><td style="padding:6px;text-align:center">74%</td><td style="padding:6px;text-align:center">82%</td></tr>
+          </table>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Conclusion & Future Work">
+        <div style="width:100%">
+          <div class="title">Conclusion</div>
+          <ul>
+            <li>Graph-based hybrid retrieval improves QA accuracy on long documents.</li>
+            <li>System provides explainable reasoning via explicit graphs.</li>
+            <li>Faithful, interpretable answers for multi-hop QA.</li>
+          </ul>
+        </div>
+      </section>
+      <section class="slide" data-title="Future Work">
+        <div>
+          <div class="title">Future Work</div>
+          <ul>
+            <li>Integrate external knowledge sources</li>
+            <li>Support cross-document reasoning</li>
+            <li>Optimize traversal heuristics</li>
+            <li>Expand evaluation to full dataset</li>
+          </ul>
+        </div>
+      </section>
+      <section class="slide" data-title="Team">
+        <div>
+          <div class="title">Team & Acknowledgements</div>
+          <div style="display:flex;justify-content:center;gap:24px;margin-top:18px;flex-wrap:wrap;">
+            <div style="background:#fff;border-radius:16px;padding:18px 20px;box-shadow:0 2px 12px #0ea5e944;min-width:210px;max-width:240px;text-align:center;display:flex;flex-direction:column;align-items:center;">
+              <div style="font-size:22px;font-weight:700;color:#0b1220">Akshat Kotadia</div>
+              <div style="font-size:16px;color:#374151;margin-top:4px;">IIIT Hyderabad</div>
+              <div style="font-size:15px;color:#7c3aed;margin-top:2px;">2025201005</div>
+            </div>
+            <div style="background:#fff;border-radius:16px;padding:18px 20px;box-shadow:0 2px 12px #0ea5e944;min-width:210px;max-width:240px;text-align:center;display:flex;flex-direction:column;align-items:center;">
+              <div style="font-size:22px;font-weight:700;color:#0b1220">Gaurav Patel</div>
+              <div style="font-size:16px;color:#374151;margin-top:4px;">IIIT Hyderabad</div>
+              <div style="font-size:15px;color:#7c3aed;margin-top:2px;">2025201065</div>
+            </div>
+            <div style="background:#fff;border-radius:16px;padding:18px 20px;box-shadow:0 2px 12px #0ea5e944;min-width:210px;max-width:240px;text-align:center;display:flex;flex-direction:column;align-items:center;">
+              <div style="font-size:22px;font-weight:700;color:#0b1220">Om Mehra</div>
+              <div style="font-size:16px;color:#374151;margin-top:4px;">IIIT Hyderabad</div>
+              <div style="font-size:15px;color:#7c3aed;margin-top:2px;">2025201008</div>
+            </div>
+            <div style="background:#fff;border-radius:16px;padding:18px 20px;box-shadow:0 2px 12px #0ea5e944;min-width:210px;max-width:240px;text-align:center;display:flex;flex-direction:column;align-items:center;">
+              <div style="font-size:22px;font-weight:700;color:#0b1220">Hardik Kothari</div>
+              <div style="font-size:16px;color:#374151;margin-top:4px;">IIIT Hyderabad</div>
+              <div style="font-size:15px;color:#7c3aed;margin-top:2px;">2025201046</div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="slide" data-title="Thank You">
+        <div>
+          <div class="title" style="color:var(--accent);font-size:56px;text-shadow:0 2px 16px #0ea5e9cc;">🙏 Thank You!</div>
+          <div class="subtitle" style="color:#0ea5e9;font-size:28px;">Questions & Discussion</div>
+          <div style="margin-top:24px;font-size:24px;color:#7c3aed;font-weight:700;text-align:center;">CTRL+ALT+DLT — Graph-Based QA Framework</div>
+          <div style="margin-top:18px;font-size:20px;color:#9ca3af;text-align:center;">Presented by:<br>Akshat Kotadia, Gaurav Patel, Om Mehra, Hardik Kothari</div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Methodology">
+        <div>
+          <div class="title">Methodology — Highlights</div>
+          <ul>
+            <li>
+              Precompute sentence/span embeddings with
+              sentence-transformers/all-mpnet-base-v2
+            </li>
+            <li>
+              Seed retrieval → depth-limited expansion (depth=2, top-5
+              neighbors)
+            </li>
+            <li>
+              Cross-encoder re-rank and extractive QA
+              (deepset/deberta-v3-large-squad2)
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Evaluation Metrics">
+        <div>
+          <div class="title">Evaluation Metrics</div>
+          <ul>
+            <li>Exact Match (EM) and token-level F1</li>
+            <li>Recall@k for retrieval diagnostics</li>
+            <li>
+              Graph reasoning depth and average time
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Results">
+        <div style="width:100%">
+          <div style="display:flex;justify-content:space-between;align-items:center;width:100%">
+            <div>
+              <div class="title">Results — Key metrics</div>
+              <div class="subtitle">Evaluated on stratified 3,000-example subset (1k per difficulty)</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-weight:700;color:#111">Overall (sample)</div>
+              <div style="color:var(--muted)">EM: <strong>45%</strong> &nbsp; F1: <strong>62%</strong></div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:24px;margin-top:18px">
+            <div style="flex:1">
+              <!-- polished SVG bar chart -->
+              <svg viewBox="0 0 700 340" width="100%" height="340" style="background:#fff;border-radius:8px;">
+                <defs>
+                  <linearGradient id="b1" x1="0" x2="1"><stop offset="0%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#7c3aed"/></linearGradient>
+                </defs>
+                <g transform="translate(40,20)">
+                  <text x="0" y="0" font-size="14" font-weight="700" fill="#0b1220">Metrics by variant</text>
+                  <!-- axes -->
+                  <line x1="0" y1="280" x2="600" y2="280" stroke="#e6eef8" stroke-width="1"/>
+                  <line x1="0" y1="0" x2="0" y2="280" stroke="#e6eef8" stroke-width="1"/>
+                  <!-- bars: BM25-only, Dense-only, Hybrid, Graph-guided -->
+                  <!-- BM25 -->
+                  <rect x="30" y="140" width="80" height="140" rx="8" fill="#60a5fa"></rect>
+                  <text x="70" y="135" text-anchor="middle" fill="#0b1220" font-size="12">BM25</text>
+                  <text x="70" y="300" text-anchor="middle" fill="#0b1220" font-size="16" font-weight="700">38%</text>
+                  <!-- Dense -->
+                  <rect x="150" y="100" width="80" height="180" rx="8" fill="#34d399"></rect>
+                  <text x="190" y="95" text-anchor="middle" fill="#0b1220" font-size="12">Dense</text>
+                  <text x="190" y="300" text-anchor="middle" fill="#0b1220" font-size="16" font-weight="700">52%</text>
+                  <!-- Hybrid -->
+                  <rect x="270" y="92" width="80" height="188" rx="8" fill="url(#b1)"></rect>
+                  <text x="310" y="87" text-anchor="middle" fill="#0b1220" font-size="12">Hybrid</text>
+                  <text x="310" y="300" text-anchor="middle" fill="#0b1220" font-size="16" font-weight="700">62%</text>
+                  <!-- Graph-guided -->
+                  <rect x="390" y="58" width="80" height="222" rx="8" fill="#f97316"></rect>
+                  <text x="430" y="53" text-anchor="middle" fill="#0b1220" font-size="12">Graph</text>
+                  <text x="430" y="300" text-anchor="middle" fill="#0b1220" font-size="16" font-weight="700">68%</text>
+                  <!-- legend -->
+                  <g transform="translate(500,10)">
+                    <rect x="0" y="0" width="12" height="12" fill="#60a5fa"></rect>
+                    <text x="18" y="10" font-size="12" fill="#0b1220">BM25-only</text>
+                    <rect x="0" y="22" width="12" height="12" fill="#34d399"></rect>
+                    <text x="18" y="32" font-size="12" fill="#0b1220">Dense-only</text>
+                    <rect x="0" y="44" width="12" height="12" fill="url(#b1)"></rect>
+                    <text x="18" y="54" font-size="12" fill="#0b1220">Hybrid</text>
+                    <rect x="0" y="66" width="12" height="12" fill="#f97316"></rect>
+                    <text x="18" y="76" font-size="12" fill="#0b1220">Graph-guided</text>
+                  </g>
+                </g>
+              </svg>
+            </div>
+
+            <div style="width:300px;display:flex;flex-direction:column;gap:12px">
+              <div style="background:#111827;border-radius:8px;padding:12px;color:#f9fafb">
+                <div style="font-weight:700">Per-level (sample)</div>
+                <div style="color:var(--muted);margin-top:6px">Easy: EM 52% · Medium: EM 44% · Hard: EM 29%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Architecture">
+        <div style="width:100%">
+          <div class="title">System Architecture</div>
+          <div class="subtitle">DRG → SpanGraph → Reasoner → QA</div>
+          <div class="svg-figure" aria-hidden="true" style="background:#fff;">
+            <img src="docs/flow_diagram.svg" alt="Architecture Diagram" style="width:90%;height:320px;object-fit:contain;border-radius:12px;box-shadow:0 2px 12px #0ea5e944;" />
+          </div>
+          <div class="note">See full PDF: <a class="pdf-link" href="docs/architecture_diagram.pdf" target="_blank">architecture_diagram.pdf</a></div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Timeline">
+        <div style="width:100%">
+          <div class="title">Project Timeline</div>
+          <div class="subtitle">Milestones & Schedule</div>
+          <div class="svg-figure" style="background:#fff;">
+            <img src="docs/timeline_diagram.pdf" alt="Timeline Diagram" style="width:90%;height:320px;object-fit:contain;border-radius:12px;box-shadow:0 2px 12px #0ea5e944;" />
+          </div>
+          <div class="note">See full PDF: <a class="pdf-link" href="docs/timeline_diagram.pdf" target="_blank">timeline_diagram.pdf</a></div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Limitations">
+        <div>
+          <div class="title">Limitations</div>
+          <ul>
+            <li>
+              Heuristic weights and traversal depth may limit generalization
+            </li>
+            <li>
+              Quality depends on preprocessing (segmentation, span extraction)
+            </li>
+            <li>
+              Experiments run on a reduced subset (1k per difficulty) due to
+              compute
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      
+    </div>
+
+    <div class="footer">Press ← / →, Space to navigate · F fullscreen</div>
+    
+
+    <script>
+      (function(){
+        const slides = Array.from(document.querySelectorAll('.slide'));
+        const thumbs = document.getElementById('thumbs');
+        
+        const prog = document.getElementById('progbar');
+        const counter = document.getElementById('counter');
+        let idx = slides.findIndex(s=>s.classList.contains('active')) || 0;
+
+        function renderThumbs(){
+          slides.forEach((s,i)=>{
+            const t = document.createElement('div'); t.className='thumb';
+            t.textContent = i+1; // show slide number
+            t.addEventListener('click',()=>show(i));
+            thumbs.appendChild(t);
+          })
+        }
+
+        function show(i){
+          slides.forEach((s,si)=>{ s.classList.remove('active'); s.classList.add('enter'); });
+          idx = (i + slides.length) % slides.length;
+          slides[idx].classList.add('active'); slides[idx].classList.remove('enter');
+          document.title = slides[idx].dataset.title + ' — GBDQA';
+          updateProg();
+          updateNotes();
+          updateThumbs();
+        }
+
+        function next(){ show(idx+1) }
+        function prev(){ show(idx-1) }
+
+        function updateProg(){ const p = Math.round(((idx+1)/slides.length)*100); prog.style.width = p + '%'; counter.textContent = `${idx+1} / ${slides.length}` }
+
+        
+
+        function updateThumbs(){ Array.from(thumbs.children).forEach((t,i)=> t.classList.toggle('active', i===idx)) }
+
+        document.addEventListener('keydown',(e)=>{
+          if(e.key==='ArrowRight' || e.key===' ' || e.key==='PageDown' || e.key==='n'){ e.preventDefault(); next(); }
+          if(e.key==='ArrowLeft' || e.key==='PageUp' || e.key==='p'){ e.preventDefault(); prev(); }
+          if(e.key==='Home') show(0);
+          if(e.key==='End') show(slides.length-1);
+          if(e.key==='f' || e.key==='F'){ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); }
+
+            if(e.key==='h' || e.key==='H'){ alert('Navigate: ← → , Space, n/p, Home/End. F for fullscreen. Click thumbnails to jump slides.') }
+        });
+
+        document.getElementById('deck').addEventListener('click',(ev)=>{
+          // prevent clicks on links or controls from advancing
+          if(ev.target.closest('a') || ev.target.closest('.pdf-link')) return;
+          next();
+        });
+
+        // toolbar buttons
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        
+        const fsBtn = document.getElementById('fsBtn');
+        if(prevBtn) prevBtn.addEventListener('click',()=>prev());
+        if(nextBtn) nextBtn.addEventListener('click',()=>next());
+        if(fsBtn) fsBtn.addEventListener('click',()=>{ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); });
+
+        // add small svg chart into Results slide if present
+        const resultSlide = slides.find(s=>s.dataset.title && s.dataset.title.toLowerCase().includes('results'));
+        if(resultSlide){
+          const chart = document.createElement('div'); chart.className='chart'; chart.innerHTML = `
+            <svg viewBox="0 0 420 220" width="420" height="220">
+              <defs><linearGradient id="g" x1="0" x2="1"><stop offset="0%" stop-color="#0ea5e9"/><stop offset="100%" stop-color="#7c3aed"/></linearGradient></defs>
+              <rect x="0" y="0" width="420" height="220" rx="8" fill="#ffffff" stroke="#e6eef8"/>
+              <text x="20" y="28" fill="#0b1220" font-size="14" font-weight="700">Retrieval & Answering (sample)</text>
+              <text x="20" y="52" fill="#374151" font-size="12">Exact Match / F1 (example)</text>
+              <!-- bars -->
+              <rect x="60" y="120" width="80" height="80" rx="6" fill="url(#g)" opacity="0.95"></rect>
+              <rect x="170" y="80" width="80" height="120" rx="6" fill="#34d399" opacity="0.95"></rect>
+              <rect x="280" y="40" width="80" height="160" rx="6" fill="#f97316" opacity="0.95"></rect>
+              <text x="100" y="116" text-anchor="middle" fill="#0b1220" font-size="12">EM</text>
+              <text x="210" y="76" text-anchor="middle" fill="#0b1220" font-size="12">F1</text>
+              <text x="320" y="36" text-anchor="middle" fill="#0b1220" font-size="12">Recall@5</text>
+              <!-- sample values -->
+              <text x="100" y="212" text-anchor="middle" fill="#0b1220" font-size="18" font-weight="700">45%</text>
+              <text x="210" y="172" text-anchor="middle" fill="#0b1220" font-size="18" font-weight="700">62%</text>
+              <text x="320" y="132" text-anchor="middle" fill="#0b1220" font-size="18" font-weight="700">78%</text>
+            </svg>`;
+          const container = resultSlide.querySelector('.cols') || resultSlide;
+          const rightCol = resultSlide.querySelector('.col') || resultSlide;
+          rightCol.appendChild(chart);
+        }
+        // dataset distribution chart
+        const datasetSlide = slides.find(s=>s.dataset.title && s.dataset.title.toLowerCase().includes('dataset'));
+        if(datasetSlide){
+          const dchart = document.getElementById('datasetChart');
+          if(dchart){
+            dchart.innerHTML = `
+              <svg viewBox="0 0 300 200" width="300" height="200" style="background:#ffffff;border-radius:8px;">
+                <defs><linearGradient id="g2" x1="0" x2="1"><stop offset="0%" stop-color="#0ea5e9"/><stop offset="100%" stop-color="#7c3aed"/></linearGradient></defs>
+                <rect x="0" y="0" width="300" height="200" rx="8" fill="#f9fafb"/>
+                <text x="150" y="20" fill="#0b1220" font-size="14" font-weight="700" text-anchor="middle">Dataset counts</text>
+                <rect x="50" y="80" width="40" height="120" fill="url(#g2)"></rect>
+                <rect x="120" y="100" width="40" height="100" fill="#34d399"></rect>
+                <rect x="190" y="60" width="40" height="140" fill="#f97316"></rect>
+                <text x="70" y="75" fill="#0b1220" font-size="12" text-anchor="middle">Easy</text>
+                <text x="140" y="95" fill="#0b1220" font-size="12" text-anchor="middle">Med</text>
+                <text x="210" y="55" fill="#0b1220" font-size="12" text-anchor="middle">Hard</text>
+              </svg>`;
+          }
+        }
+
+        show(idx);
+      })();
+    </script>
+  </body>
+</html>
