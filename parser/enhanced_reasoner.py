@@ -380,6 +380,54 @@ class EnhancedHybridReasoner:
         # Sort by accumulated score
         ranked = sorted(all_results.items(), key=lambda x: x[1], reverse=True)
         return [sid for sid, _ in ranked[:k]]
+
+    # ========================================
+    # KG-Guided Retrieval
+    # ========================================
+    
+    def kg_guided_retrieval(self, query: str, k: int = 10) -> List[int]:
+        """
+        Extract entities from query, find 1-hop neighbors in KG, and retrieve spans mentioning them.
+        """
+        if not self.kg_graph:
+            return []
+            
+        q_norm = normalize_text(query).lower()
+        query_entities = [ent for ent in self.kg_graph.nodes() if re.search(rf'\b{re.escape(ent.lower())}\b', q_norm)]
+        
+        if not query_entities:
+            return []
+            
+        # Find 1-hop neighbors spanning from query entities
+        expanded_entities = set(query_entities)
+        for ent in query_entities:
+            # Directed and undirected neighbors
+            for neighbor in self.kg_graph.successors(ent) if self.kg_graph.is_directed() else self.kg_graph.neighbors(ent):
+                expanded_entities.add(neighbor)
+            if self.kg_graph.is_directed():
+                for neighbor in self.kg_graph.predecessors(ent):
+                    expanded_entities.add(neighbor)
+                
+        # Retrieve spans mentioning any of the expanded entities
+        candidate_spans = []
+        for span_id in self.span_graph.nodes():
+            text = self.span_graph.nodes[span_id].get("text", "").lower()
+            if any(re.search(rf'\b{re.escape(ent.lower())}\b', text) for ent in expanded_entities):
+                candidate_spans.append(span_id)
+                
+        if not candidate_spans:
+            return []
+            
+        # Score the candidates by semantic similarity to query to rank them
+        q_emb = self.embed_query(query)
+        scored = []
+        for span_id in candidate_spans:
+            emb = self.span_graph.nodes[span_id].get("embedding")
+            sim = self.cosine(q_emb, emb) if emb is not None else 0.0
+            scored.append((span_id, sim))
+            
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return [sid for sid, _ in scored[:k]]
     
     # ========================================
     # Cross-Encoder Re-ranking
@@ -617,9 +665,11 @@ class EnhancedHybridReasoner:
         # Step 3: Query expansion
         expansion_results = self.retrieval_with_expansion(query, k=k*2)
         
+        # Step 4: KG-guided retrieval
+        kg_results = self.kg_guided_retrieval(query, k=k*2)
 
         # Merge all candidates
-        all_candidates = set(hybrid_results) | set(traversal_results) | set(expansion_results)
+        all_candidates = set(hybrid_results) | set(traversal_results) | set(expansion_results) | set(kg_results)
         
         # Step 5: Final scoring with all signals
         q_emb = self.embed_query(query)
@@ -668,6 +718,7 @@ class EnhancedHybridReasoner:
             in_hybrid    = 1.0 if span_id in hybrid_results    else 0.0
             in_traversal = 1.0 if span_id in traversal_results else 0.0
             in_expansion = 1.0 if span_id in expansion_results else 0.0
+            in_kg        = 1.0 if span_id in kg_results        else 0.0
 
             # KG bonus: if the span mentions entities found in the KG
             kg_bonus = 0.0
@@ -680,15 +731,16 @@ class EnhancedHybridReasoner:
 
             # Combined score — purely model/signal-driven, no domain-specific rules
             final_score = (
-                0.30 * sem_score +       # Primary: semantic similarity (LaBSE)
-                0.20 * bm25_score +      # Lexical matching (BM25)
+                0.28 * sem_score +       # Primary: semantic similarity (LaBSE)
+                0.18 * bm25_score +      # Lexical matching (BM25)
                 0.12 * overlap_score +   # Token overlap
                 0.10 * sentence_bonus +  # Sentence-level relevance
                 0.08 * cent_score +      # Graph centrality
-                0.07 * in_hybrid +       # Multi-source voting
+                0.06 * in_hybrid +       # Multi-source voting
                 0.04 * in_traversal +
                 0.03 * in_expansion +
-                0.06 * kg_bonus          # KG entity bonus
+                0.05 * in_kg +           # KG guided retrieval bonus
+                0.06 * kg_bonus          # KG entity mention bonus
             )
 
             final_scores.append((span_id, final_score))
@@ -769,6 +821,7 @@ class EnhancedHybridReasoner:
             "hybrid_results": hybrid_results[:5],
             "traversal_results": traversal_results[:5],
             "expansion_results": expansion_results[:5],
+            "kg_results": kg_results[:5],
             "kg_entities": [ent for chain in evidence_chains for ent in chain.get("kg_entities", [])],
             "kg_spans": [sid for chain in evidence_chains for sid in chain.get("nodes", []) if sid in self.span_graph.nodes],
             "evidence_chains": evidence_chains,

@@ -30,7 +30,7 @@ class Span:
 class SpanExtractor:
     """Extract fine-grained spans from sentences."""
     
-    def __init__(self, ner_model: str = "Jean-Baptiste/roberta-large-ner-english"):
+    def __init__(self, ner_model: str = "dslim/bert-base-NER"):
         self.ner_model = ner_model
         self.ner_pipeline = None
         self.use_ner = True

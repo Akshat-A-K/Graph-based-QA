@@ -99,7 +99,7 @@ def select_answer(
     query: str,
     reasoner=None,
     max_length: int = 300
-) -> Tuple[str, List[str]]:
+) -> Tuple[str, List[str], float]:
     """Pick the best answer span with keyword anchoring and sentence preference."""
     final_spans = results.get("final_spans", [])
     if not final_spans:
@@ -116,6 +116,7 @@ def select_answer(
     candidate_ids.extend(results.get("traversal_results", []))
     candidate_ids.extend(results.get("expansion_results", []))
     candidate_ids.extend(results.get("kg_spans", []))
+    candidate_ids.extend(results.get("kg_results", []))
 
     seen = set()
     candidates = []
@@ -161,7 +162,7 @@ def select_answer(
         ranked.append((span_id, text, score, sentence_id, span_type, overlap))
 
     if not ranked:
-        return "No answer found", []
+        return "No answer found", [], 0.0
 
     ranked.sort(key=lambda x: x[2], reverse=True)
 
@@ -211,6 +212,7 @@ def select_answer(
     # the best retrieved passage.  This is fully model-driven and generalises
     # to any document domain without any hardcoded patterns.
     # -----------------------------------------------------------------------
+    best_qa_score = 0.0
     try:
         qa_pipeline = get_qa_pipeline()
 
@@ -266,10 +268,7 @@ def select_answer(
             except Exception:
                 pass  # keep original order if BM25 sorting fails
 
-
-
         best_qa_answer = ""
-        best_qa_score = 0.0
 
         # Pass 1 — run QA on each context individually to get precise spans.
         # Section-number prefixes are stripped before extraction so that fused
@@ -383,4 +382,11 @@ def select_answer(
         if len(evidence_texts) >= 3:
             break
 
-    return best_text, evidence_texts
+    # Calculate combination confidence
+    normalized_retrieval = min(max(best_score, 0.0), 1.0)
+    if best_qa_score > 0:
+        combined_confidence = (normalized_retrieval * 0.4) + (best_qa_score * 0.6)
+    else:
+        combined_confidence = normalized_retrieval
+
+    return best_text, evidence_texts, combined_confidence

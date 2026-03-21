@@ -20,6 +20,7 @@ except Exception:
 
 _MODEL_CACHE: Dict[str, Any] = {}
 _QA_PIPELINE_CACHE: Dict[str, Any] = {}
+_NER_PIPELINE_CACHE: Dict[str, Any] = {}
 
 
 def get_sentence_transformer(model_name: str):
@@ -35,6 +36,22 @@ def get_sentence_transformer(model_name: str):
         return model
     except Exception as e:
         print(f"Error loading SentenceTransformer: {e}")
+        return None
+
+
+def get_ner_pipeline(model_name: str = "dslim/bert-base-NER"):
+    if model_name in _NER_PIPELINE_CACHE:
+        return _NER_PIPELINE_CACHE[model_name]
+
+    try:
+        from transformers import pipeline
+        device = 0 if (_TORCH_AVAILABLE and torch.cuda.is_available()) else -1
+        print(f"Loading NER pipeline: {model_name}...")
+        ner = pipeline("ner", model=model_name, aggregation_strategy="simple", device=device)
+        _NER_PIPELINE_CACHE[model_name] = ner
+        return ner
+    except Exception as e:
+        print(f"Error loading NER pipeline: {e}")
         return None
 
 

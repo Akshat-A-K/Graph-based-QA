@@ -190,7 +190,7 @@ if st.session_state.graphs:
             # Display answer
             st.markdown("---")
             st.subheader("Answer")
-            answer, answer_spans = extract_answer_text(
+            answer, answer_spans, confidence = extract_answer_text(
                 results,
                 st.session_state.graphs['span_graph'],
                 question,
@@ -201,8 +201,9 @@ if st.session_state.graphs:
             answer_clean = answer.replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')
             
             st.markdown(f"""
-            <div style='background-color: #1e3a1e; padding: 1.5rem; border-radius: 0.5rem; border-left: 5px solid #4CAF50;'>
+            <div style='background-color: #1e3a1e; padding: 1.5rem; border-radius: 0.5rem; border-left: 5px solid #4CAF50; margin-bottom: 10px;'>
                 <p style='color: #e0e0e0; font-size: 1.1rem; line-height: 1.6; margin: 0;'>{answer_clean}</p>
+                <p style='color: #9e9e9e; font-size: 0.85rem; margin-top: 10px; margin-bottom: 0px;'>Combined Confidence: <b>{confidence:.1%}</b></p>
             </div>
             """, unsafe_allow_html=True)
             
@@ -217,7 +218,7 @@ if st.session_state.graphs:
                 st.metric("Evidence Spans", num_evidence, help="Number of supporting spans found")
             with col_conf2:
                 kg_ents = len(results.get('kg_entities', []))
-                # KG metrics removed
+                st.metric("KG Entities Used", kg_ents, help="Knowledge Graph entities explicitly activated during reasoning")
             
             # Evidence
             st.markdown("")
@@ -248,10 +249,12 @@ if st.session_state.graphs:
                     hybrid = len(results.get('hybrid_results', []))
                     traversal = len(results.get('traversal_results', []))
                     expansion = len(results.get('expansion_results', []))
+                    kg_guided = len(results.get('kg_results', []))
                     
                     st.metric("Hybrid Retrieval", hybrid, help="BM25 + Semantic + Centrality")
                     st.metric("Graph Traversal", traversal, help="Multi-hop graph navigation")
                     st.metric("Query Expansion", expansion, help="Synonym-based expansion")
+                    st.metric("KG-Guided Retrieval", kg_guided, help="Entity-hop knowledge graph retrieval")
                 
                 with col_b:
                     st.markdown("**Knowledge Graph**")

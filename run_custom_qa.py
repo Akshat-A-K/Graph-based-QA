@@ -301,7 +301,7 @@ def main():
         evidence_spans = []
 
         if final_spans:
-            answer, evidence_spans = select_answer(
+            answer, evidence_spans, confidence = select_answer(
                 results,
                 span_graph_builder,
                 question,
@@ -339,7 +339,9 @@ def main():
               f"Hybrid={len(results.get('hybrid_results', []))}  "
               f"Traversal={len(results.get('traversal_results', []))}  "
               f"Expansion={len(results.get('expansion_results', []))}  "
-              f"KG={len(results.get('kg_entities', []))}")
+              f"KG_R={len(results.get('kg_results', []))}  "
+              f"KG_Ent={len(results.get('kg_entities', []))}")
+        print(f"     Conf       : {confidence:.2%} (Combined Retrieval/QA)")
         print(f"     Time       : {elapsed:.2f}s")
         if evidence_spans:
             print(f"     Top evidence: {evidence_spans[0][:120].strip()}...")
@@ -362,6 +364,7 @@ def main():
                 "hybrid": len(results.get("hybrid_results", [])),
                 "traversal": len(results.get("traversal_results", [])),
                 "expansion": len(results.get("expansion_results", [])),
+                "kg_guided": len(results.get("kg_results", [])),
                 "kg_entities": len(results.get("kg_entities", [])),
             },
         })

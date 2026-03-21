@@ -47,7 +47,7 @@ class QuestionProcessor:
         
         # Rule-based fallback
         q_lower = question.lower()
-        if any(w in q_lower for w in ["compare", "difference", "versus", "vs"]):
+        if any(w in q_lower for w in ["compare", "difference", "versus", "vs", "older ", "younger ", "taller ", "which is", "are both", "or", "both"]):
             return "comparative"
         if any(w in q_lower for w in ["why", "because", "reason"]):
             return "causal"
@@ -78,10 +78,44 @@ class QuestionProcessor:
             except Exception:
                 pass
                 
-        # Rule-based fallback for decomposition (basic)
-        if " and " in question and "?" in question:
-            parts = question.replace("?", "").split(" and ")
-            if len(parts) == 2:
+        # Rule-based fallback for decomposition (robust for HotpotQA)
+        q_clean = question.replace("?", "").strip()
+        
+        # Pattern 1: "Are [Ent1] and [Ent2] both [property]?"
+        comp_match = re.match(r"(?:are|is|were|was|do|did|does)\s+(.*?)\s+and\s+(.*?)\s+both\s+(.*)", q_clean, re.IGNORECASE)
+        if comp_match:
+            e1, e2, prop = comp_match.groups()
+            return [f"Is {e1} {prop}?", f"Is {e2} {prop}?"]
+            
+        # Pattern 2: "Which [entity] [action] [X] and [Y]?"
+        and_match = re.search(r"^(who|which|what)(.*?)(?:was|is|did|does|has|had)\s+(.*?)\s+and\s+(.*?)$", q_clean, re.IGNORECASE)
+        if and_match:
+            wh, noun, act1, act2 = and_match.groups()
+            return [f"{wh}{noun} {act1}?", f"{wh}{noun} {act2}?"]
+            
+        # Pattern 3: "Who is [adjective], [Ent1] or [Ent2]?" 
+        or_match = re.search(r"^(who|which|what)\s+(?:is|was)\s+(.*?),\s+(.*?)\s+or\s+(.*?)$", q_clean, re.IGNORECASE)
+        if or_match:
+            wh, prop, e1, e2 = or_match.groups()
+            base_prop = prop.replace("older", "old").replace("longer", "long").replace("taller", "tall").replace("larger", "large").replace("bigger", "big")
+            return [f"How {base_prop} is {e1}?", f"How {base_prop} is {e2}?"]
+
+        # Pattern 4: "Does A have property that B does not?"
+        does_not_match = re.search(r"^(?:does|do|did|is|are|was) (.*?) (.*?) that (.*?) (?:does not|do not|is not)$", q_clean, re.IGNORECASE)
+        if does_not_match:
+            e1, action, e2 = does_not_match.groups()
+            return [f"What {action} for {e1}?", f"What {action} for {e2}?"]
+            
+        # Pattern 5: Bridge generic fallback (the X of Y)
+        bridge_match = re.search(r"(the\s+\w+\s+of\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)", q_clean)
+        if bridge_match:
+            bridge_phrase = bridge_match.group(1)
+            return [f"What is {bridge_phrase}?", question]
+
+        # Pattern 6: Simple boolean "and" split
+        if " and " in q_clean:
+            parts = q_clean.split(" and ")
+            if len(parts) == 2 and len(parts[0].split()) > 2 and len(parts[1].split()) > 2:
                 return [parts[0].strip() + "?", parts[1].strip() + "?"]
         
         return [question]

@@ -31,13 +31,9 @@ class DocumentReasoningGraph:
             return self.ner_pipeline
 
         try:
-            from transformers import pipeline
+            from .model_cache import get_ner_pipeline
             # Use an English NER model
-            self.ner_pipeline = pipeline(
-                "ner",
-                model="dslim/bert-base-NER",
-                aggregation_strategy="simple"
-            )
+            self.ner_pipeline = get_ner_pipeline("dslim/bert-base-NER")
         except Exception:
             self.ner_pipeline = None
             self.use_ner = False

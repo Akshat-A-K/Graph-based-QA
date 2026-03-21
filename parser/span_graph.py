@@ -365,6 +365,9 @@ class SpanGraph:
                 # Convert list to string
                 discourse_list = export_graph.nodes[node]['discourse_types']
                 export_graph.nodes[node]['discourse_types'] = ','.join(discourse_list) if discourse_list else ''
+            if 'entities' in export_graph.nodes[node]:
+                entity_list = export_graph.nodes[node]['entities']
+                export_graph.nodes[node]['entities'] = ','.join(str(e) for e in entity_list) if entity_list else ''
         
         nx.write_graphml(export_graph, output_path)
         print(f"✅ Span graph exported to {output_path}")

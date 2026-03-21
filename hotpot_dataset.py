@@ -405,6 +405,7 @@ def main():
         reasoner = EnhancedHybridReasoner(
             sentence_graph=drg.graph,
             span_graph=span_graph_builder.graph,
+            kg_graph=kg.graph,
             model_name=EMBED_MODEL,
         )
         results     = reasoner.enhanced_reasoning(question, k=5)
@@ -412,9 +413,10 @@ def main():
 
         answer           = "No answer found"
         evidence_spans   = []
+        confidence       = 0.0
 
         if final_spans:
-            answer, evidence_spans = select_answer(
+            answer, evidence_spans, confidence = select_answer(
                 results,
                 span_graph_builder,
                 question,
@@ -565,6 +567,11 @@ def main():
             f"Predicted: {answer}",
             "green" if em == 1.0 else "yellow",
         )
+
+        confidence_label = "Low"
+        if confidence >= 0.8: confidence_label = "High"
+        elif confidence >= 0.45: confidence_label = "Med"
+        
         print(
             f"EM={em:.0f}  F1={f1:.2f}  Conf={confidence_label}({confidence:.2%})"
             f"  Depth={reasoning_depth}  Time={elapsed:.2f}s"
@@ -581,6 +588,7 @@ def main():
             "predicted_answer": answer,
             "exact_match":      em,
             "f1":               f1,
+            "confidence":       confidence,
             "time_s":           round(elapsed, 3),
             "evidence_count":   len(evidence_spans),
             "evidence_spans":   evidence_spans[:3],
@@ -595,6 +603,7 @@ def main():
                 "hybrid":    len(results.get("hybrid_results", [])),
                 "traversal": len(results.get("traversal_results", [])),
                 "expansion": len(results.get("expansion_results", [])),
+                "kg_guided": len(results.get("kg_results", [])),
             },
             "graph_stats": {
                 "drg_nodes":        drg.graph.number_of_nodes(),
