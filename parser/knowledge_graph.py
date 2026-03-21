@@ -237,8 +237,17 @@ class KnowledgeGraph:
         print("[KG] Building Knowledge Graph …")
         edge_count = 0
 
-        for sent in sentences:
-            for subj_raw, rel_raw, obj_raw, triple_type in self._extract_triples(sent):
+        for item in sentences:
+            # Handle list of strings or list of node dictionaries
+            if isinstance(item, dict):
+                sent_text = item.get("text", "")
+            else:
+                sent_text = str(item)
+            
+            if not sent_text:
+                continue
+
+            for subj_raw, rel_raw, obj_raw, triple_type in self._extract_triples(sent_text):
                 subj = _normalise(subj_raw)
                 obj  = _normalise(obj_raw)
                 rel  = rel_raw.strip().lower()

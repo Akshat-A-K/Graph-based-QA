@@ -2,47 +2,54 @@
 Model cache utilities to avoid re-loading large transformers multiple times.
 """
 
-import torch
-from typing import Dict
-from sentence_transformers import SentenceTransformer
+try:
+    import torch
+    _TORCH_AVAILABLE = True
+except Exception:
+    _TORCH_AVAILABLE = False
+    print("WARNING: torch not available. CUDA acceleration and some models will be disabled.")
 
-_MODEL_CACHE: Dict[str, "SentenceTransformer"] = {}
-_QA_PIPELINE_CACHE: Dict[str, object] = {}
+from typing import Dict, Any
+
+try:
+    from sentence_transformers import SentenceTransformer
+    _SENTENCE_TRANSFORMERS_AVAILABLE = True
+except Exception:
+    _SENTENCE_TRANSFORMERS_AVAILABLE = False
+    print("WARNING: sentence_transformers not available. Semantic features will be disabled.")
+
+_MODEL_CACHE: Dict[str, Any] = {}
+_QA_PIPELINE_CACHE: Dict[str, Any] = {}
 
 
 def get_sentence_transformer(model_name: str):
-    """Return a cached SentenceTransformer instance for a given model name.
-
-    Uses CPU by default so it never competes with the QA pipeline for GPU VRAM.
-    The QA pipeline (DeBERTa-v3-large) is the GPU bottleneck; the sentence
-    transformer is used for batch pre-encoding and can run efficiently on CPU.
-    """
     if model_name in _MODEL_CACHE:
         return _MODEL_CACHE[model_name]
 
+    if not _SENTENCE_TRANSFORMERS_AVAILABLE:
+        return None
 
-    model = SentenceTransformer(model_name, device="cpu")
-    _MODEL_CACHE[model_name] = model
-    return model
+    try:
+        model = SentenceTransformer(model_name, device="cpu")
+        _MODEL_CACHE[model_name] = model
+        return model
+    except Exception as e:
+        print(f"Error loading SentenceTransformer: {e}")
+        return None
 
 
 def get_qa_pipeline(model_name: str = "deepset/deberta-v3-large-squad2"):
-    """Return a cached Transformers extractive-QA pipeline.
-
-    DeBERTa-v3-large uses disentangled attention with a larger capacity model
-    (~400M params). Significantly better than base on identity questions
-    ("Who is X?"), multi-token answers, and low-resource span extraction.
-    Downloads the model on first call; subsequent calls use the in-memory cache.
-    Uses GPU when available for faster inference.
-    """
     if model_name in _QA_PIPELINE_CACHE:
         return _QA_PIPELINE_CACHE[model_name]
 
-    from transformers import pipeline
-
-    device = 0 if torch.cuda.is_available() else -1
-    print(f"Loading extractive-QA model: {model_name} (device={device})...")
-    qa = pipeline("question-answering", model=model_name, device=device)
-    _QA_PIPELINE_CACHE[model_name] = qa
-    print("Extractive-QA model ready.")
-    return qa
+    try:
+        from transformers import pipeline
+        device = 0 if (_TORCH_AVAILABLE and torch.cuda.is_available()) else -1
+        print(f"Loading extractive-QA model: {model_name} (device={device})...")
+        qa = pipeline("question-answering", model=model_name, device=device)
+        _QA_PIPELINE_CACHE[model_name] = qa
+        print("Extractive-QA model ready.")
+        return qa
+    except Exception as e:
+        print(f"Error loading QA pipeline: {e}")
+        return None

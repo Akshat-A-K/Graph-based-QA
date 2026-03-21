@@ -79,6 +79,9 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         kg = KnowledgeGraph()
         kg.build_graph(sentence_texts)
         
+        # Align KG with DRG
+        drg.add_kg_edges(kg)
+        
         # Export graphs for visualization
         os.makedirs('graphs', exist_ok=True)
         span_graph_builder.export_graph_json('graphs/span_graph.json')
@@ -92,6 +95,7 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         reasoner = EnhancedHybridReasoner(
             sentence_graph=drg.graph,
             span_graph=span_graph_builder.graph,
+            kg_graph=kg.graph,
             model_name=chosen_model,
             use_cross_encoder=False
         )
@@ -202,6 +206,10 @@ if st.session_state.graphs:
             </div>
             """, unsafe_allow_html=True)
             
+            # Show sub-questions if complex
+            if results.get("is_aggregated"):
+                st.info(f"🔍 Question decomposed into {results.get('sub_questions_count')} sub-steps.")
+            
             # Show evidence metrics
             col_conf1, col_conf2 = st.columns(2)
             with col_conf1:
@@ -219,6 +227,16 @@ if st.session_state.graphs:
             for i, span_text in enumerate(answer_spans[:5], 1):  # Limit to top 5
                 with st.expander(f"📄 Evidence {i}", expanded=(i==1)):
                     st.markdown(f"```\n{span_text}\n```")
+            
+            # Evidence Chains
+            chains = results.get("evidence_chains", [])
+            if chains:
+                st.markdown("")
+                st.subheader("Reasoning Chains")
+                for i, chain in enumerate(chains, 1):
+                    with st.expander(f"🔗 Chain {i}: {chain['type']}", expanded=True):
+                        st.write(chain["text"])
+                        st.caption(f"Confidence score: {chain['score']:.4f}")
             
             # Breakdown
             st.markdown("")

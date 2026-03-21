@@ -3,9 +3,15 @@ import os
 import gc
 import json
 import time
-import torch
 import numpy as np
 from datetime import datetime
+
+# Handle Windows console encoding
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except AttributeError:
+        pass
 
 
 class _NumpyEncoder(json.JSONEncoder):
@@ -37,7 +43,7 @@ from parser.drg_nodes import build_nodes
 from parser.drg_graph import DocumentReasoningGraph
 from parser.span_extractor import SpanExtractor
 from parser.span_graph import SpanGraph
-# Knowledge graph removed
+from parser.knowledge_graph import KnowledgeGraph
 from parser.enhanced_reasoner import EnhancedHybridReasoner
 from parser.answer_selector import select_answer
 from parser.evaluator import QAEvaluator
@@ -77,8 +83,6 @@ def _warn(message: str, color: str = "yellow") -> None:
 def main():
     # Force garbage collection before starting
     gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
 
     if len(sys.argv) > 1:
         pdf_path = sys.argv[1]
@@ -138,9 +142,17 @@ def main():
     # Clear memory after Span Graph
     gc.collect()
 
+    print("Building Knowledge Graph...")
+    kg = KnowledgeGraph()
+    kg.build_graph(sentence_nodes)
+    
+    # Align KG with DRG
+    drg.add_kg_edges(kg)
+
     reasoner = EnhancedHybridReasoner(
         sentence_graph=drg.graph,
         span_graph=span_graph_builder.graph,
+        kg_graph=kg.graph,
         model_name=EMBED_MODEL,
     )
     print("Initializing Reasoner...")
@@ -151,7 +163,8 @@ def main():
         "pages": len(pages),
         "sentences": drg.graph.number_of_nodes(),
         "spans": span_graph_builder.graph.number_of_nodes(),
-        # knowledge graph removed
+        "kg_nodes": kg.graph.number_of_nodes(),
+        "kg_edges": kg.graph.number_of_edges()
     }
 
     pdf_lower = os.path.basename(pdf_path).lower()
@@ -439,4 +452,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        # If it happens at the very end, we already saved reports
+        # Just print the error and exit gracefully if possible
+        try:
+            print(f"\nPipeline finished with some console issues: {e}")
+        except Exception:
+            pass

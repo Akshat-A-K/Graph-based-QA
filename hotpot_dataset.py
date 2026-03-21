@@ -33,7 +33,20 @@ import random
 import string
 import argparse
 import numpy as np
-import torch
+
+# Handle Windows console encoding
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except AttributeError:
+        pass
+try:
+    import torch
+    _TORCH_AVAILABLE = True
+except Exception:
+    _TORCH_AVAILABLE = False
+    print("WARNING: torch not available. CUDA acceleration will be disabled.")
+
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional
 
@@ -600,7 +613,7 @@ def main():
         # ── 10. Free memory ────────────────────────────────────────────
         del drg, span_graph_builder, span_extractor, reasoner, results, kg
         gc.collect()
-        if torch.cuda.is_available():
+        if _TORCH_AVAILABLE and torch.cuda.is_available():
             torch.cuda.empty_cache()
 
     # ------------------------------------------------------------------

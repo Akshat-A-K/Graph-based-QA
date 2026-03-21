@@ -10,9 +10,14 @@ Enhanced Hybrid Reasoner with Advanced Retrieval:
 
 import numpy as np
 import networkx as nx
-from sentence_transformers import CrossEncoder
+try:
+    from sentence_transformers import CrossEncoder
+    _CROSS_ENCODER_AVAILABLE = True
+except Exception:
+    _CROSS_ENCODER_AVAILABLE = False
 from .model_cache import get_sentence_transformer
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Tuple
+from collections import defaultdict
 
 # NLTK stopwords
 try:
@@ -36,21 +41,27 @@ from .advanced_retrieval import (
     normalize_text,
     tokenize
 )
+from .question_processor import QuestionProcessor
 
 
 class EnhancedHybridReasoner:
     """
     Enhanced multi-level reasoning with advanced retrieval techniques.
-    Uses BM25, centrality, and cross-encoder re-ranking.
+    Handles complex queries via decomposition and graph-based multi-hop reasoning.
     """
     
     def __init__(self, sentence_graph: nx.Graph, span_graph: nx.Graph,
+                 kg_graph: nx.Graph = None,
                  model_name="sentence-transformers/all-mpnet-base-v2",
                  use_cross_encoder=True):
         self.sentence_graph = sentence_graph
         self.span_graph = span_graph
+        self.kg_graph = kg_graph
         print(f"Loading retrieval model: {model_name}")
         self.model = get_sentence_transformer(model_name)
+        
+        # Initialize question processor
+        self.question_processor = QuestionProcessor()
 
         self.bm25_spans = None
         self.bm25_sentences = None
@@ -76,6 +87,8 @@ class EnhancedHybridReasoner:
         print("Enhanced hybrid reasoner initialized")
         print(f"  - Sentence nodes: {sentence_graph.number_of_nodes()}")
         print(f"  - Span nodes: {span_graph.number_of_nodes()}")
+        if kg_graph:
+            print(f"  - KG nodes: {kg_graph.number_of_nodes()}")
         print("  - BM25 index: ready")
         print("  - Graph centrality: ready")
         print(f"  - Cross-encoder: {'enabled' if use_cross_encoder else 'disabled'}")
@@ -199,11 +212,17 @@ class EnhancedHybridReasoner:
     
     def embed_query(self, query: str) -> np.ndarray:
         """Embed query using sentence transformer."""
+        if self.model is None:
+            return np.zeros(384)
         return self.model.encode([query])[0]
     
     def cosine(self, a: np.ndarray, b: np.ndarray) -> float:
         """Compute cosine similarity."""
-        return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+        norm_a = np.linalg.norm(a)
+        norm_b = np.linalg.norm(b)
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        return np.dot(a, b) / (norm_a * norm_b)
     
     # ========================================
     # Enhanced Span Retrieval
@@ -523,8 +542,69 @@ class EnhancedHybridReasoner:
     
     def enhanced_reasoning(self, query: str, k: int = 10) -> Dict[str, List]:
         """
-        Best reasoning strategy combining all improvements.
+        Best reasoning strategy combining all improvements, including sub-question processing.
         """
+        # Step 0: Process question (classify and decompose)
+        q_info = self.question_processor.process(query)
+        sub_questions = q_info["sub_questions"]
+        q_type = q_info["type"]
+        is_complex = q_info["is_complex"]
+
+        if is_complex:
+            print(f"Decomposing complex question into {len(sub_questions)} sub-questions...")
+            all_sub_results = []
+            for sub_q in sub_questions:
+                print(f"  - Sub-question: {sub_q}")
+                sub_res = self._run_reasoning_core(sub_q, k=k)
+                all_sub_results.append(sub_res)
+            
+            # Aggregate sub-question results
+            return self._aggregate_reasoning_results(query, all_sub_results, k=k)
+        else:
+            return self._run_reasoning_core(query, k=k)
+
+    def _aggregate_reasoning_results(self, original_query: str, sub_results: List[Dict], k: int = 10) -> Dict:
+        """
+        Merge and rerank results from multiple sub-questions.
+        """
+        combined_spans_set = set()
+        all_span_scores = defaultdict(float)
+        all_kg_entities = set()
+        all_chains = []
+        
+        # Weighted aggregation (simplified: sum of scores)
+        for res in sub_results:
+            for span_id in res["final_spans"]:
+                combined_spans_set.add(span_id)
+                all_span_scores[span_id] += res["span_scores"].get(span_id, 0.0)
+            
+            all_kg_entities.update(res.get("kg_entities", []))
+            all_chains.extend(res.get("evidence_chains", []))
+
+        # Re-rank combined spans
+        sorted_spans = sorted(list(combined_spans_set), key=lambda x: all_span_scores[x], reverse=True)
+        final_spans = sorted_spans[:k]
+        
+        # Dedup chains and take best
+        all_chains.sort(key=lambda x: x["score"], reverse=True)
+        seen_chain_texts = set()
+        unique_chains = []
+        for c in all_chains:
+            if c["text"] not in seen_chain_texts:
+                unique_chains.append(c)
+                seen_chain_texts.add(c["text"])
+
+        return {
+            "final_spans": final_spans,
+            "span_scores": dict(all_span_scores),
+            "kg_entities": list(all_kg_entities),
+            "evidence_chains": unique_chains[:3],
+            "is_aggregated": True,
+            "sub_questions_count": len(sub_results)
+        }
+
+    def _run_reasoning_core(self, query: str, k: int = 10) -> Dict[str, List]:
+        """Core reasoning logic extracted from enhanced_reasoning."""
         query_tokens = set(tokenize(query))
 
         sentence_scores = self._score_sentences(query)
@@ -589,16 +669,26 @@ class EnhancedHybridReasoner:
             in_traversal = 1.0 if span_id in traversal_results else 0.0
             in_expansion = 1.0 if span_id in expansion_results else 0.0
 
+            # KG bonus: if the span mentions entities found in the KG
+            kg_bonus = 0.0
+            if self.kg_graph:
+                span_text_lower = text.lower()
+                for ent in self.kg_graph.nodes():
+                    if re.search(rf'\b{re.escape(ent.lower())}\b', span_text_lower):
+                        kg_bonus += 0.05
+                kg_bonus = min(kg_bonus, 0.15)
+
             # Combined score — purely model/signal-driven, no domain-specific rules
             final_score = (
-                0.35 * sem_score +       # Primary: semantic similarity (LaBSE)
+                0.30 * sem_score +       # Primary: semantic similarity (LaBSE)
                 0.20 * bm25_score +      # Lexical matching (BM25)
                 0.12 * overlap_score +   # Token overlap
                 0.10 * sentence_bonus +  # Sentence-level relevance
                 0.08 * cent_score +      # Graph centrality
                 0.07 * in_hybrid +       # Multi-source voting
                 0.04 * in_traversal +
-                0.03 * in_expansion
+                0.03 * in_expansion +
+                0.06 * kg_bonus          # KG entity bonus
             )
 
             final_scores.append((span_id, final_score))
@@ -613,9 +703,11 @@ class EnhancedHybridReasoner:
         else:
             reranked = top_candidates
 
-        # Step 7: MMR reranking — diversify so the answer selector sees spans
-        # from different parts of the document, not just the top-scoring region.
+        # Step 7: MMR reranking — diversify
         reranked = self.mmr_rerank(query, reranked, k=min(k*2, len(reranked)), lambda_param=0.65)
+
+        # Step 8: Multi-hop reasoning chains
+        evidence_chains = self.build_evidence_chains(query, reranked[:5])
 
         def is_relevant(span_id: int) -> bool:
             """Improved relevance check with stopword filtering and semantic threshold"""
@@ -631,37 +723,27 @@ class EnhancedHybridReasoner:
             final_score_map = {sid: score for sid, score in final_scores}
 
             # Get semantic score for this span
-            span_semantic_score = final_score_map.get(span_id, 0.0)  # O(1)
-
-            for sid, score in final_scores:
-                if sid == span_id:
-                    span_semantic_score = score
-                    break
+            span_semantic_score = final_score_map.get(span_id, 0.0)
             
             sentence_id = self.span_graph.nodes[span_id].get("sentence_id")
             sentence_score = sentence_scores.get(sentence_id, 0.0)
 
-            # Minimum semantic threshold — reject very low-scoring spans
+            # Minimum semantic threshold
             if span_semantic_score < 0.12:
                 return False
 
-            # Sufficient lexical overlap → relevant
             if meaningful_overlap >= 2:
                 return True
 
-            # Strong semantic score alone is enough
             if span_semantic_score >= 0.40:
                 return True
 
-            # One meaningful word + decent score
             if meaningful_overlap >= 1 and span_semantic_score >= 0.30:
                 return True
 
-            # Strong sentence-level match
             if sentence_score >= 0.50:
                 return True
 
-            # Default: require at least one meaningful overlapping word
             return meaningful_overlap >= 1
 
         filtered = [sid for sid in reranked if is_relevant(sid)]
@@ -670,22 +752,16 @@ class EnhancedHybridReasoner:
         else:
             final_spans = filtered[:k]
         
-        # Apply diversity filtering to avoid redundant evidence
+        # Apply diversity filtering
         diverse_spans = self.get_diverse_evidence(final_spans, max_spans=k)
         
-        # Keep a minimal abstain guard using evidence count only.
-        if len(diverse_spans) < 1:
-            return {
-                "final_spans": [],
-                "hybrid_results": hybrid_results[:5],
-                "traversal_results": traversal_results[:5],
-                "expansion_results": expansion_results[:5],
-                "kg_entities": [],
-                "kg_spans": [],
-                "span_scores": {}
-            }
-        
-        # Build span scores mapping for answer extraction
+        # Add spans from evidence chains to final_spans if they are highly relevant
+        for chain in evidence_chains[:2]:
+            for node_id in chain["nodes"]:
+                if node_id not in diverse_spans and len(diverse_spans) < k + 2:
+                    diverse_spans.append(node_id)
+
+        # Build span scores mapping
         span_score_map = {sid: score for sid, score in final_scores}
         
         return {
@@ -693,7 +769,79 @@ class EnhancedHybridReasoner:
             "hybrid_results": hybrid_results[:5],
             "traversal_results": traversal_results[:5],
             "expansion_results": expansion_results[:5],
-            "kg_entities": [],
-            "kg_spans": [],
+            "kg_entities": [ent for chain in evidence_chains for ent in chain.get("kg_entities", [])],
+            "kg_spans": [sid for chain in evidence_chains for sid in chain.get("nodes", []) if sid in self.span_graph.nodes],
+            "evidence_chains": evidence_chains,
             "span_scores": span_score_map
         }
+
+    def build_evidence_chains(self, query: str, top_spans: List[int], max_chains: int = 3) -> List[Dict]:
+        """
+        Find and score multi-hop reasoning paths between top retrieved spans.
+        Uses both DRG and KG if available.
+        """
+        if not top_spans or len(top_spans) < 2:
+            return []
+
+        chains = []
+        # Convert span IDs to sentence IDs for DRG traversal
+        seed_sentences = []
+        for sid in top_spans:
+            sent_id = self.span_graph.nodes[sid].get("sentence_id")
+            if sent_id is not None and sent_id not in seed_sentences:
+                seed_sentences.append(sent_id)
+
+        # 1. DRG-based chains (structural & semantic paths)
+        for i in range(min(3, len(seed_sentences))):
+            for j in range(i + 1, min(4, len(seed_sentences))):
+                start_node = seed_sentences[i]
+                end_node = seed_sentences[j]
+                
+                try:
+                    # Find shortest path in the directed DRG
+                    path = nx.shortest_path(self.sentence_graph, start_node, end_node, weight='weight')
+                    if 1 < len(path) <= 4:  # Reasonable chain length
+                        chain_text = [self.sentence_graph.nodes[n]["text"] for n in path]
+                        # Score the chain based on node importance and path length
+                        score = sum(self.sentence_graph.nodes[n].get("pagerank", 0) for n in path) / len(path)
+                        chains.append({
+                            "type": "drg_path",
+                            "nodes": path,
+                            "text": " → ".join(chain_text),
+                            "score": float(score)
+                        })
+                except (nx.NetworkXNoPath, nx.NodeNotFound):
+                    continue
+
+        # 2. KG-based bridge chains
+        if self.kg_graph:
+            query_entities = []
+            q_norm = normalize_text(query)
+            for ent in self.kg_graph.nodes():
+                if re.search(rf'\b{re.escape(ent.lower())}\b', q_norm):
+                    query_entities.append(ent)
+            
+            for q_ent in query_entities:
+                for s_id in seed_sentences[:3]:
+                    s_entities = self.sentence_graph.nodes[s_id].get("kg_entities", [])
+                    for s_ent in s_entities:
+                        if q_ent == s_ent:
+                            continue
+                        try:
+                            # Use KnowledgeGraph's shortest_path_evidence if available
+                            # or just raw NetworkX on self.kg_graph
+                            kg_path = nx.shortest_path(self.kg_graph, q_ent, s_ent)
+                            if 1 < len(kg_path) <= 3:
+                                chains.append({
+                                    "type": "kg_bridge",
+                                    "kg_entities": kg_path,
+                                    "nodes": [s_id],
+                                    "text": f"KG Bridge: {' -> '.join(kg_path)}",
+                                    "score": 0.5 / len(kg_path)
+                                })
+                        except (nx.NetworkXNoPath, nx.NodeNotFound):
+                            continue
+
+        chains.sort(key=lambda x: x["score"], reverse=True)
+        return chains[:max_chains]
+import re

@@ -139,6 +139,15 @@ class SpanGraph:
     def compute_embeddings(self):
         """Compute embeddings and importance scores for all spans."""
         print("📊 Computing span embeddings and importance...")
+        
+        if self.model is None:
+            print("WARNING: Span model is None. Using zero embeddings.")
+            for node_id in self.graph.nodes:
+                self.graph.nodes[node_id]["embedding"] = np.zeros(384)
+                self.graph.nodes[node_id]["importance"] = 1.0
+                self.graph.nodes[node_id]["length"] = len(self.graph.nodes[node_id].get("text", ""))
+            return
+
         texts = [self.graph.nodes[n]["text"] for n in self.graph.nodes]
         embeddings = self.model.encode(texts, show_progress_bar=True)
         

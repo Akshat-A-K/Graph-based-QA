@@ -63,6 +63,14 @@ class DocumentReasoningGraph:
     def compute_embeddings(self):
         print("Computing embeddings and importance scores...")
 
+        if self.model is None:
+            print("WARNING: DRG model is None. Using zero embeddings.")
+            for node_id in self.graph.nodes:
+                self.graph.nodes[node_id]["embedding"] = np.zeros(384)
+                self.graph.nodes[node_id]["importance"] = 1.0
+                self.graph.nodes[node_id]["length"] = 0
+            return
+
         texts = [self.graph.nodes[n]["text"] for n in self.graph.nodes]
         embeddings = self.model.encode(texts, show_progress_bar=True)
 
@@ -236,6 +244,46 @@ class DocumentReasoningGraph:
                         edge_count += 1
         
         print(f"Added {edge_count} entity coreference edge pairs")
+    
+    # -------------------------
+    # STEP 5: KG entity alignment
+    # -------------------------
+    def add_kg_edges(self, kg_graph_obj):
+        """
+        Align KG entities with DRG nodes and add cross-graph edges.
+        kg_graph_obj is an instance of KnowledgeGraph.
+        """
+        print("Adding KG-DRG cross-linking edges...")
+        if kg_graph_obj is None or kg_graph_obj.graph.number_of_nodes() == 0:
+            return
+
+        edge_count = 0
+        kg_entities = list(kg_graph_obj.graph.nodes())
+        
+        # Build mapping for faster lookup
+        entity_to_nodes = defaultdict(list)
+        for node_id in self.graph.nodes:
+            text = self.graph.nodes[node_id]['text'].lower()
+            for ent in kg_entities:
+                # Use word-boundary regex for precise matching
+                if re.search(rf'\b{re.escape(ent.lower())}\b', text):
+                    entity_to_nodes[ent].append(node_id)
+                    # Store KG entity in DRG node metadata
+                    if 'kg_entities' not in self.graph.nodes[node_id]:
+                        self.graph.nodes[node_id]['kg_entities'] = []
+                    self.graph.nodes[node_id]['kg_entities'].append(ent)
+
+        # Add edges between nodes that share KG entities
+        for ent, node_list in entity_to_nodes.items():
+            if len(node_list) > 1:
+                for i in range(len(node_list)):
+                    for j in range(i + 1, len(node_list)):
+                        n1, n2 = node_list[i], node_list[j]
+                        self.graph.add_edge(n1, n2, type="kg_overlap", weight=0.9, entity=ent)
+                        self.graph.add_edge(n2, n1, type="kg_overlap", weight=0.9, entity=ent)
+                        edge_count += 1
+        
+        print(f"Added {edge_count} KG-DRG cross-linking edges")
     
     # -------------------------
     # COMPUTE GRAPH METRICS

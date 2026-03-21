@@ -4,7 +4,11 @@ Extracts meaningful text spans (phrases, clauses) beyond sentence boundaries.
 """
 
 import re
-import spacy
+try:
+    import spacy
+    _SPACY_AVAILABLE = True
+except ImportError:
+    _SPACY_AVAILABLE = False
 from typing import List, Dict, Tuple
 from dataclasses import dataclass, field
 
@@ -38,12 +42,18 @@ class SpanExtractor:
             self.ner_pipeline = None
             self.use_ner = False
 
-        # initialize spaCy dependency parser (may raise if model missing)
-        try:
-            self.nlp = spacy.load("en_core_web_trf")
-            print("Loaded spaCy model for dependency parsing.")
-        except Exception:
-            self.nlp = None
+        # initialize spaCy dependency parser (may raise if model or library missing)
+        self.nlp = None
+        if _SPACY_AVAILABLE:
+            try:
+                # Try transformer model first, fallback to small if needed
+                try:
+                    self.nlp = spacy.load("en_core_web_trf")
+                except Exception:
+                    self.nlp = spacy.load("en_core_web_sm")
+                print("Loaded spaCy model for dependency parsing.")
+            except Exception:
+                self.nlp = None
 
         # Patterns for clause boundaries (more conservative to avoid over-splitting)
         self.clause_markers = [
