@@ -1,20 +1,33 @@
-# Core dependencies
+# Core
 numpy>=1.20.0
 tqdm>=4.60.0
 
-# Graph processing
+# Graphs and scoring
 networkx>=2.6
 matplotlib>=3.5.0
+scikit-learn>=1.0.0
 
-# PDF extraction
+# PDF processing
 pymupdf>=1.20.0
 
-# NLP
+# NLP / models
 sentence-transformers>=2.2.0
-scikit-learn>=1.0.0
-nltk>=3.8.0
-transformers>=4.37.0
+transformers>=4.41.0,<5.0.0
 torch>=2.0.0
+torchvision>=0.26.0
+nltk>=3.8.0
+spacy>=3.7.0,<4.0.0
 
-# UI
+# App / CLI
 streamlit>=1.20.0
+colorama>=0.4.6
+
+# Optional features
+# OCR and table extraction in parser/pdf_parser.py
+Pillow>=10.0.0
+pytesseract>=0.3.10
+pdfplumber>=0.10.0
+
+# Optional spaCy coreference extension used in parser/knowledge_graph.py
+# Available only for certain spaCy/Python combinations.
+coreferee>=1.4.1; python_version < "3.14"
