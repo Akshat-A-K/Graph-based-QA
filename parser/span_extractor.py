@@ -219,7 +219,7 @@ class SpanExtractor:
 
         doc = self.nlp(sentence)
 
-        # ── noun phrases ──
+        # Extract noun phrase spans for entity- and concept-level evidence.
         for chunk in doc.noun_chunks:
             text = chunk.text.strip()
             if not text:
@@ -235,7 +235,7 @@ class SpanExtractor:
             ))
             span_id += 1
 
-        # ── CARDINAL + head noun (moved OUTSIDE noun_chunks loop) ──
+        # Pair numeric tokens with their noun heads as compact fact spans.
         for token in doc:
             if token.pos_ == "NUM" or token.ent_type_ == "CARDINAL":
                 head = token.head
@@ -268,7 +268,7 @@ class SpanExtractor:
                         ))
                         span_id += 1
 
-        # ── verb clauses (moved OUTSIDE noun_chunks loop) ──
+        # Extract verb-centered clause spans for action/relationship evidence.
         for token in doc:
             if token.pos_ == "VERB":
                 subtree = list(token.subtree)
@@ -290,7 +290,7 @@ class SpanExtractor:
                     ))
                     span_id += 1
 
-        return spans, span_id   # ← now correctly OUTSIDE all loops
+        return spans, span_id   # now correctly outside all loops
     
     # removed regex-based phrase classifier; dependency-based extraction used instead
     

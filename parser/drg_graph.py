@@ -40,9 +40,7 @@ class DocumentReasoningGraph:
 
         return self.ner_pipeline
 
-    # -------------------------
-    # STEP 1: add nodes
-    # -------------------------
+    # Add sentence nodes with basic metadata.
     def add_nodes(self, nodes):
         for node in nodes:
             self.graph.add_node(
@@ -53,9 +51,7 @@ class DocumentReasoningGraph:
                 sent_index=node["sent_index"]
             )
 
-    # -------------------------
-    # STEP 2: embeddings + importance
-    # -------------------------
+    # Compute embeddings and lightweight node importance scores.
     def compute_embeddings(self):
         print("Computing embeddings and importance scores...")
 
@@ -86,9 +82,7 @@ class DocumentReasoningGraph:
         # Extract entities for linking
         self._extract_entities()
 
-    # -------------------------
-    # STEP 3: enhanced structural edges
-    # -------------------------
+    # Add structural edges such as adjacency, section, and proximity links.
     def add_structural_edges(self):
         print("Adding enhanced structural edges...")
 
@@ -126,9 +120,7 @@ class DocumentReasoningGraph:
                     self.graph.add_edge(n1, n2, type="proximity", weight=proximity_weight)
                     self.graph.add_edge(n2, n1, type="proximity", weight=proximity_weight)
 
-    # -------------------------
-    # STEP 4: enhanced semantic edges
-    # -------------------------
+    # Add semantic edges and then connect entity-overlap nodes.
     def add_semantic_edges(self, threshold=0.75):
         print("Adding semantic and entity-based edges...")
 
@@ -175,9 +167,7 @@ class DocumentReasoningGraph:
         # Add entity-based coreference edges
         self._add_entity_edges()
 
-    # -------------------------
-    # HELPER: Extract entities for coreference
-    # -------------------------
+    # Extract named entities and key terms for coreference-style linking.
     def _extract_entities(self):
         """Extract named entities and key terms from sentences"""
         print("Extracting entities...")
@@ -220,9 +210,7 @@ class DocumentReasoningGraph:
             
             self.graph.nodes[node_id]['entities'] = entities
     
-    # -------------------------
-    # HELPER: Add entity-based edges
-    # -------------------------
+    # Connect nodes that mention the same entities.
     def _add_entity_edges(self):
         """Connect sentences that mention the same entities"""
         print("Adding entity coreference edges...")
@@ -241,9 +229,7 @@ class DocumentReasoningGraph:
         
         print(f"Added {edge_count} entity coreference edge pairs")
     
-    # -------------------------
-    # STEP 5: KG entity alignment
-    # -------------------------
+    # Align DRG nodes with KG entities and add cross-graph links.
     def add_kg_edges(self, kg_graph_obj):
         """
         Align KG entities with DRG nodes and add cross-graph edges.
@@ -281,9 +267,7 @@ class DocumentReasoningGraph:
         
         print(f"Added {edge_count} KG-DRG cross-linking edges")
     
-    # -------------------------
-    # COMPUTE GRAPH METRICS
-    # -------------------------
+    # Compute centrality values used during retrieval and reasoning.
     def compute_graph_metrics(self):
         """Compute node centrality and importance metrics"""
         print("Computing graph centrality metrics...")

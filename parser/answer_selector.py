@@ -3,7 +3,7 @@ Answer selection utilities.
 
 Final answer extraction is performed by a Transformer-based extractive-QA
 model (default: deepset/roberta-base-squad2).  No document-type-specific
-hardcoding is used — the model generalises across any PDF domain.
+hardcoding is used - the model generalises across any PDF domain.
 """
 
 from typing import Dict, List, Tuple
@@ -48,9 +48,7 @@ def _strip_section_prefix(text: str) -> str:
     return re.sub(r'^\d+(?:\.\d+)*\s+', '', text)
 
 
-# ---------------------------------------------------------------------------
-# Extractive QA helper
-# ---------------------------------------------------------------------------
+# Run extractive QA on candidate contexts to pinpoint the final answer span.
 
 def _qa_extract(question: str, context: str, qa_pipeline) -> Tuple[str, float]:
     """Run an extractive-QA model to find the precise answer span in *context*.
@@ -150,7 +148,7 @@ def select_answer(
         elif overlap == 0:
             score -= 0.12
 
-        # No hardcoded domain boosts — scoring is purely overlap + length
+        # No hardcoded domain boosts - scoring is purely overlap + length
 
         # Penalize extremely long fragments
         if len(text) > max_length * 1.6:
@@ -207,16 +205,13 @@ def select_answer(
         if 0 < len(sentence_text) <= max_length * 1.2:
             best_text = sentence_text
 
-    # -----------------------------------------------------------------------
-    # Extractive QA: let the model pinpoint the precise answer span inside
-    # the best retrieved passage.  This is fully model-driven and generalises
-    # to any document domain without any hardcoded patterns.
-    # -----------------------------------------------------------------------
+    # Let the QA model extract the exact answer from top-ranked contexts.
+    # This remains model-driven and document-agnostic.
     best_qa_score = 0.0
     try:
         qa_pipeline = get_qa_pipeline()
 
-        # --- individual contexts: top-1 winner + up to 9 runners-up ---
+        # Evaluate top contexts individually before trying merged contexts.
         contexts: List[str] = [best_text]
         for _, ctx_text, _, _, _, _ in ranked[1:10]:
             if ctx_text and ctx_text not in contexts:
@@ -236,11 +231,11 @@ def select_answer(
         # tried *first* and becomes the protected primary context.  This
         # simultaneously handles two failure modes:
         #   (a) The correct sentence ranks 2nd in dense retrieval (e.g. Q6:
-        #       "where was Kalam born?" → s1 "Born and raised in Rameswaram"
+        #       "where was Kalam born?" -> s1 "Born and raised in Rameswaram"
         #       should be first, not s0 "Indian aerospace scientist").
         #   (b) A surface-plausible but wrong sentence has a higher QA score
         #       (e.g. Q13: s5 "president of India" outscoring s8 "Bharat Ratna")
-        #       — protecting the BM25-first correct primary context blocks the
+        #       - protecting the BM25-first correct primary context blocks the
         #       wrong secondary from overriding.
         # Re-ordering is only applied when the BM25 winner scores *meaningfully*
         # higher than the current contexts[0]; when no context has distinctive
@@ -256,7 +251,7 @@ def select_answer(
                     # Find BM25 score of the current first context (idx 0)
                     orig_score = next((s for i, s in scored if i == 0), 0.0)
                     # Only re-order if BM25 top-1 is different from contexts[0]
-                    # AND it scored meaningfully higher (>1.5× the first context's
+                    # AND it scored meaningfully higher (>1.5x the first context's
                     # BM25 score).  When all contexts score equally (no
                     # discriminative keywords), this condition fails and we keep
                     # the original dense-retrieval order.
@@ -270,16 +265,16 @@ def select_answer(
 
         best_qa_answer = ""
 
-        # Pass 1 — run QA on each context individually to get precise spans.
+        # Pass 1 - run QA on each context individually to get precise spans.
         # Section-number prefixes are stripped before extraction so that fused
-        # headers like '3.4 Evaluation Report the Accuracy...' don’t mislead
+        # headers like '3.4 Evaluation Report the Accuracy...' don't mislead
         # the model into treating the section title as a candidate answer span.
         #
-        # The *primary* context (ranked[0] — the retriever's top pick) has
+        # The *primary* context (ranked[0] - the retriever's top pick) has
         # protected priority: secondary contexts can only override its answer
         # when they are substantially more confident.  The override margin is
         # adaptive: when the primary context already returned a confident answer
-        # (≥ 0.45) the bar is raised by OVERRIDE_MARGIN_HIGH (0.20) to prevent
+        # (>= 0.45) the bar is raised by OVERRIDE_MARGIN_HIGH (0.20) to prevent
         # a lower-ranked but surface-plausibly-matching sentence from usurping
         # the retrieval-ranked winner on QA score alone.  When the primary is
         # uncertain (< 0.45) a small margin (0.05) is used so that a clearly
@@ -303,7 +298,7 @@ def select_answer(
                     best_qa_score = score
                     best_qa_answer = answer
 
-        # Pass 2 — concatenate top-5 contexts into one larger window.
+        # Pass 2 - concatenate top-5 contexts into one larger window.
         # Only runs when Pass 1 is low-score (< 0.35); if a single context
         # already gave a strong answer, don't dilute it by mixing contexts.
         if best_qa_score < 0.35:
@@ -315,9 +310,9 @@ def select_answer(
                     best_qa_score = score
                     best_qa_answer = answer
 
-        # Pass 3 — global BM25 search over every sentence in the document.
+        # Pass 3 - global BM25 search over every sentence in the document.
         # Only runs when the current best answer is low-score (< 0.50).
-        # A strong Pass-1 answer (≥ 0.50) is treated as correct and BM25
+        # A strong Pass-1 answer (>= 0.50) is treated as correct and BM25
         # is skipped so that keyword-matched-but-wrong sentences cannot corrupt
         # an already-good extraction.
         # BM25 is purely frequency-based with no domain knowledge, so this
@@ -364,7 +359,7 @@ def select_answer(
     # Truncate if too long
     if len(best_text) > max_length:
         best_text = best_text[:max_length]
-        last_period = max(best_text.rfind("."), best_text.rfind("।"))
+        last_period = max(best_text.rfind("."), best_text.rfind("\u0964"))
         if last_period > max_length * 0.6:
             best_text = best_text[:last_period + 1]
         else:

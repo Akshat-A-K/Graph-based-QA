@@ -224,9 +224,7 @@ class EnhancedHybridReasoner:
             return 0.0
         return np.dot(a, b) / (norm_a * norm_b)
     
-    # ========================================
-    # Enhanced Span Retrieval
-    # ========================================
+    # Retrieve candidate spans using hybrid semantic, lexical, and centrality scoring.
     
     def enhanced_span_retrieval(self, query: str, k: int = 10) -> List[int]:
         """
@@ -236,7 +234,7 @@ class EnhancedHybridReasoner:
 
         q_emb = self.embed_query(query)
 
-        # 1. Semantic scores — purely model-driven, no domain-specific bonuses
+        # 1. Semantic scores - purely model-driven, no domain-specific bonuses
         semantic_scores = {}
         for span_id in self.span_graph.nodes:
             emb = self.span_graph.nodes[span_id]["embedding"]
@@ -290,9 +288,7 @@ class EnhancedHybridReasoner:
         
         return [sid for sid, _ in ranked[:k*2]]
     
-    # ========================================
-    # Enhanced Graph Traversal
-    # ========================================
+    # Expand retrieval via graph traversal with centrality-guided neighbors.
     
     def enhanced_span_traversal(self, query: str, depth: int = 2, k: int = 10) -> List[int]:
         """
@@ -356,9 +352,7 @@ class EnhancedHybridReasoner:
         scored.sort(key=lambda x: x[1], reverse=True)
         return [sid for sid, _ in scored[:k]]
     
-    # ========================================
-    # Query Expansion
-    # ========================================
+    # Re-run retrieval on semantically expanded query variants.
     
     def retrieval_with_expansion(self, query: str, k: int = 10) -> List[int]:
         """
@@ -381,9 +375,7 @@ class EnhancedHybridReasoner:
         ranked = sorted(all_results.items(), key=lambda x: x[1], reverse=True)
         return [sid for sid, _ in ranked[:k]]
 
-    # ========================================
-    # KG-Guided Retrieval
-    # ========================================
+    # Use KG entities and neighbors to retrieve additional relevant spans.
     
     def kg_guided_retrieval(self, query: str, k: int = 10) -> List[int]:
         """
@@ -429,9 +421,7 @@ class EnhancedHybridReasoner:
         scored.sort(key=lambda x: x[1], reverse=True)
         return [sid for sid, _ in scored[:k]]
     
-    # ========================================
-    # Cross-Encoder Re-ranking
-    # ========================================
+    # Apply optional cross-encoder reranking for higher precision.
     
     def rerank_with_cross_encoder(
         self, 
@@ -463,9 +453,7 @@ class EnhancedHybridReasoner:
         
         return [sid for sid, _ in ranked[:top_k]]
  
-    # ========================================
-    # Evidence Diversity
-    # ========================================
+    # Keep evidence diverse with MMR and section-aware fallback logic.
     
     def mmr_rerank(
         self,
@@ -478,9 +466,9 @@ class EnhancedHybridReasoner:
 
         Balances relevance to the query against novelty relative to already-
         selected spans.  lambda_param=0.6 gives 60% weight to relevance and
-        40% to diversity — tuned empirically for this pipeline.
+        40% to diversity - tuned empirically for this pipeline.
 
-        MMR(s) = λ·sim(s, query) − (1−λ)·max_{sj ∈ selected} sim(s, sj)
+        MMR(s) = lambda*sim(s, query) - (1-lambda)*max_{sj in selected} sim(s, sj)
         """
         if not span_ids:
             return []
@@ -536,7 +524,7 @@ class EnhancedHybridReasoner:
             for sid in span_ids[:3]
         )
         if has_emb:
-            # Use MMR with a stored query proxy — take the centroid of the
+            # Use MMR with a stored query proxy - take the centroid of the
             # selected spans as a pseudo-query so we diversify without needing
             # the original query string here.
             centroid = np.mean(
@@ -584,9 +572,7 @@ class EnhancedHybridReasoner:
                 selected_fb.append(span_id)
         return selected_fb
     
-    # ========================================
-    # Main Enhanced Reasoning
-    # ========================================
+    # Run the complete reasoning pipeline, including sub-question handling.
     
     def enhanced_reasoning(self, query: str, k: int = 10) -> Dict[str, List]:
         """
@@ -729,7 +715,7 @@ class EnhancedHybridReasoner:
                         kg_bonus += 0.05
                 kg_bonus = min(kg_bonus, 0.15)
 
-            # Combined score — purely model/signal-driven, no domain-specific rules
+            # Combined score - purely model/signal-driven, no domain-specific rules
             final_score = (
                 0.28 * sem_score +       # Primary: semantic similarity (LaBSE)
                 0.18 * bm25_score +      # Lexical matching (BM25)
@@ -755,7 +741,7 @@ class EnhancedHybridReasoner:
         else:
             reranked = top_candidates
 
-        # Step 7: MMR reranking — diversify
+        # Step 7: MMR reranking - diversify
         reranked = self.mmr_rerank(query, reranked, k=min(k*2, len(reranked)), lambda_param=0.65)
 
         # Step 8: Multi-hop reasoning chains
@@ -860,7 +846,7 @@ class EnhancedHybridReasoner:
                         chains.append({
                             "type": "drg_path",
                             "nodes": path,
-                            "text": " → ".join(chain_text),
+                            "text": " -> ".join(chain_text),
                             "score": float(score)
                         })
                 except (nx.NetworkXNoPath, nx.NodeNotFound):

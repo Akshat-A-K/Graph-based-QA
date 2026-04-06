@@ -24,7 +24,7 @@ COMPARATIVE_PATTERNS = [
     r'\bmore\b', r'\bless\b', r'\blarger\b', r'\bsmaller\b',
     r'\bfirst\b', r'\bearlier\b', r'\brecent\b', r'\bolder\b',
     r'\bwider\b', r'\bbigger\b', r'\bdiverse\b',
-    # NOTE: removed \bstill in\b — that's select_one not comparative
+    # NOTE: removed \bstill in\b - that's select_one not comparative
 ]
 
 COMMON_PROPERTY_PATTERNS = [
@@ -53,7 +53,7 @@ def classify_comparison_type(question: str) -> str:
     if re.search(r'\bdifferent\b|\bhow is\b', q):
         return "difference"
 
-    # Common property — check before boolean
+    # Common property - check before boolean
     if any(re.search(p, q, re.IGNORECASE) for p in COMMON_PROPERTY_PATTERNS):
         return "common_property"
 
@@ -87,7 +87,7 @@ def extract_comparison_entities(question: str) -> Tuple[Optional[str], Optional[
     if between_match:
         return between_match.group(1).strip(), between_match.group(2).strip()
 
-    # 2. After comma: "X or Y" — most reliable pattern
+    # 2. After comma: "X or Y" - most reliable pattern
     comma_split = question.split(',', 1)
     if len(comma_split) == 2:
         entity_part = comma_split[1].strip().rstrip('?')
@@ -106,7 +106,7 @@ def extract_comparison_entities(question: str) -> Tuple[Optional[str], Optional[
     if semi_match:
         return semi_match.group(1).strip(), semi_match.group(2).strip()
 
-    # 4. "both X and Y" — only when "both" precedes entities (not at end)
+    # 4. "both X and Y" - only when "both" precedes entities (not at end)
     # "Are both X and Y..." or "both X and Y share..."
     and_match = re.search(
         r'\bboth\s+(?:the\s+)?(.{2,80}?)\s+and\s+(?:the\s+)?(.{2,80?})'
@@ -126,7 +126,7 @@ def extract_comparison_entities(question: str) -> Tuple[Optional[str], Optional[
     if pre_comma:
         return pre_comma.group(1).strip(), pre_comma.group(2).strip()
 
-    # 6. "Are the X and the Y both..." — boolean with "the" prefixes
+    # 6. "Are the X and the Y both..." - boolean with "the" prefixes
     # Extract around "and" between question start and "both"
     are_and_both = re.search(
         r'(?:Are|Is|Were|Was)\s+(?:the\s+)?(.{2,80}?)\s+and\s+'
@@ -146,7 +146,7 @@ def extract_comparison_entities(question: str) -> Tuple[Optional[str], Optional[
     if and_match2:
         return and_match2.group(1).strip(), and_match2.group(2).strip()
 
-    # 8. "X or Y" anywhere (last resort — most greedy)
+    # 8. "X or Y" anywhere (last resort - most greedy)
     or_match2 = re.search(
         r'(?:the\s+)?(.{2,60}?)\s+or\s+(?:the\s+)?(.{2,60})',
         question

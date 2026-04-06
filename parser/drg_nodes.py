@@ -5,7 +5,7 @@ from .section_utils import detect_section
 
 def build_nodes(pages: List[Dict]) -> List[Dict]:
     """
-    Convert pages → sentence nodes
+    Convert pages -> sentence nodes
     """
 
     nodes = []

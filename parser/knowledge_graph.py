@@ -18,9 +18,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 import networkx as nx
 
-# ---------------------------------------------------------------------------
-# Optional imports — degrade gracefully if not installed
-# ---------------------------------------------------------------------------
+# Optional imports with graceful fallback when packages are unavailable.
 try:
     import spacy
     _SPACY_OK = True
@@ -34,9 +32,7 @@ except ImportError:
     _COMMUNITY_OK = False
 
 
-# ---------------------------------------------------------------------------
-# Helper: text normalisation
-# ---------------------------------------------------------------------------
+# Text normalization helpers used for robust node and relation matching.
 _STOP_WORDS: Set[str] = {
     "a", "an", "the", "this", "that", "these", "those",
     "it", "its", "they", "their", "he", "she", "his", "her",
@@ -64,39 +60,35 @@ def _span_text(token) -> str:
     return " ".join(t.text for t in parts)
 
 
-# ---------------------------------------------------------------------------
-# KnowledgeGraph
-# ---------------------------------------------------------------------------
+# Build, analyze, and query a directed knowledge graph from document text.
 class KnowledgeGraph:
     """
     Directed knowledge graph built from natural-language sentences.
 
     Node attributes
     ---------------
-    text        : str   – normalised surface form
-    label       : str   – NER label or "entity" / "noun_chunk"
-    frequency   : int   – how many times this entity was seen
-    pagerank    : float – PageRank score (computed after build)
-    community   : int   – community id (computed after build)
+    text        : str   - normalised surface form
+    label       : str   - NER label or "entity" / "noun_chunk"
+    frequency   : int   - how many times this entity was seen
+    pagerank    : float - PageRank score (computed after build)
+    community   : int   - community id (computed after build)
 
     Edge attributes
     ---------------
-    relation    : str   – normalised relation phrase
-    type        : str   – "relation" | "is_a" | "part_of" | "coref"
-    weight      : float – edge weight (incremented on duplicate triples)
+    relation    : str   - normalised relation phrase
+    type        : str   - "relation" | "is_a" | "part_of" | "coref"
+    weight      : float - edge weight (incremented on duplicate triples)
     """
 
-    # ------------------------------------------------------------------
-    # Construction
-    # ------------------------------------------------------------------
+    # Initialize graph state and optional spaCy pipeline.
     def __init__(self, model_name: str = "en_core_web_trf"):
         self.graph: nx.DiGraph = nx.DiGraph()
         self._entity_freq: Dict[str, int] = defaultdict(int)
-        self._ner_label: Dict[str, str] = {}       # normalised text → NER label
+        self._ner_label: Dict[str, str] = {}       # normalised text -> NER label
         self.nlp = None
 
         if not _SPACY_OK:
-            print("spaCy not installed – KnowledgeGraph extraction disabled.")
+            print("spaCy not installed - KnowledgeGraph extraction disabled.")
             return
 
         for name in (model_name, "en_core_web_lg", "en_core_web_sm"):
@@ -108,16 +100,14 @@ class KnowledgeGraph:
                 continue
 
         if self.nlp is None:
-            print("[KG] No spaCy model found – extraction disabled.")
+            print("[KG] No spaCy model found - extraction disabled.")
 
-    # ------------------------------------------------------------------
-    # Triple extraction
-    # ------------------------------------------------------------------
+    # Extract relation triples from sentence-level linguistic structure.
     def _extract_triples(self, text: str) -> List[Tuple[str, str, str, str]]:
         """
         Return list of (subject, relation, object, triple_type) tuples.
 
-        triple_type ∈ {"relation", "is_a", "copula"}
+        triple_type in {"relation", "is_a", "copula"}
         """
         if self.nlp is None:
             return []
@@ -125,7 +115,7 @@ class KnowledgeGraph:
         doc = self.nlp(text)
         triples: List[Tuple[str, str, str, str]] = []
 
-        # -- NER entity registry for this sentence -----------------------
+        # Keep sentence-local NER references for entity labeling.
         ner_spans = {ent.start: ent for ent in doc.ents}
 
         def _best_text(token) -> str:
@@ -148,7 +138,7 @@ class KnowledgeGraph:
         for sent in doc.sents:
             for token in sent:
 
-                # ── (A) Verbal predicates ────────────────────────────
+                # Handle verbal predicates and verb-centered relations.
                 if token.pos_ == "VERB":
                     subjects: List[str] = []
                     objects: List[str]  = []
@@ -186,7 +176,7 @@ class KnowledgeGraph:
                                             )
                                     _record_ner(gc)
 
-                    # Passive → flip for readability (obj is_passive subj)
+                    # Passive -> flip for readability (obj is_passive subj)
                     for s in subjects:
                         for o in objects:
                             if s and o:
@@ -199,7 +189,7 @@ class KnowledgeGraph:
                                         (s, verb_phrase, o, "relation")
                                     )
 
-                # ── (B) Copula "be" → is_a / equals ─────────────────
+                # Map copula patterns to simple "is" relations.
                 elif token.pos_ == "AUX" and token.lemma_ == "be":
                     subjects: List[str] = []
                     predicates: List[str] = []
@@ -215,7 +205,7 @@ class KnowledgeGraph:
                             if s and p:
                                 triples.append((s, "is", p, "is_a"))
 
-        # ── (C) Noun-chunk fallback for isolated NPs ─────────────────
+        # Add fallback links when no verb-centered triples were extracted.
         # When a sentence has no verb triples, connect consecutive named
         # entities with a generic "related_to" edge so the graph stays connected.
         if not triples:
@@ -229,12 +219,10 @@ class KnowledgeGraph:
 
         return triples
 
-    # ------------------------------------------------------------------
-    # Build
-    # ------------------------------------------------------------------
+    # Build the graph from sentence text and extracted triples.
     def build_graph(self, sentences: List[str]) -> None:
         """Build the knowledge graph from a list of sentences."""
-        print("[KG] Building Knowledge Graph …")
+        print("[KG] Building Knowledge Graph...")
         edge_count = 0
 
         for item in sentences:
@@ -299,9 +287,7 @@ class KnowledgeGraph:
             f"{edge_count} unique edges"
         )
 
-    # ------------------------------------------------------------------
-    # Analytics
-    # ------------------------------------------------------------------
+    # Compute graph analytics used for ranking and diagnostics.
     def _compute_analytics(self) -> None:
         """Compute PageRank, betweenness centrality, and communities."""
         if self.graph.number_of_nodes() == 0:
@@ -328,9 +314,7 @@ class KnowledgeGraph:
             except Exception:
                 pass
 
-    # ------------------------------------------------------------------
-    # Query API
-    # ------------------------------------------------------------------
+    # Query and path APIs used during QA reasoning.
     def query_entity(
         self, entity: str, max_hops: int = 2
     ) -> List[Dict]:
@@ -435,7 +419,7 @@ class KnowledgeGraph:
                     if self.graph.has_edge(a, b)
                     else self.graph[b][a].get("relation", "?")
                 )
-                evidence.append(f"{a} –[{rel}]→ {b}")
+                evidence.append(f"{a} -[{rel}]-> {b}")
             return evidence
         except (nx.NetworkXNoPath, nx.NodeNotFound):
             return None
@@ -450,11 +434,11 @@ class KnowledgeGraph:
         path_evidence = self.shortest_path_evidence(entity1, entity2)
         if path_evidence is None or len(path_evidence) <= 1:
             return []
-        # Extract intermediate node names (between → markers)
+        # Extract intermediate node names (between -> markers)
         nodes = []
         for step in path_evidence[:-1]:          # exclude last hop
-            # step looks like "node_a –[rel]→ node_b"
-            parts = re.split(r"\s*–\[.*?\]→\s*", step)
+            # step looks like "node_a -[rel]-> node_b"
+            parts = re.split(r"\s*-\[.*?\]->\s*", step)
             if len(parts) == 2:
                 nodes.append(parts[1].strip())   # the target of this hop
         return nodes
@@ -504,9 +488,7 @@ class KnowledgeGraph:
                             if self.graph.number_of_nodes() > 0 else False,
         }
 
-    # ------------------------------------------------------------------
-    # Export
-    # ------------------------------------------------------------------
+    # Export graph structure and metadata for inspection and tooling.
     def export_json(self, filepath: str) -> None:
         """Export the knowledge graph to JSON."""
         data = {

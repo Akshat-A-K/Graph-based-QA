@@ -246,7 +246,7 @@ Each sentence node has:
 
 ### Sentence splitting
 
-`parser/sentence_splitter.py` first tries spaCy sentence segmentation with `en_core_web_sm`. If spaCy is unavailable or fails, it falls back to regex splitting on sentence-ending punctuation, including the Hindi danda characters `।` and `॥`.
+`parser/sentence_splitter.py` first tries spaCy sentence segmentation with `en_core_web_sm`. If spaCy is unavailable or fails, it falls back to regex splitting on sentence-ending punctuation, including the Hindi danda characters (U+0964 and U+0965).
 
 The splitter removes sentences shorter than or equal to three characters.
 

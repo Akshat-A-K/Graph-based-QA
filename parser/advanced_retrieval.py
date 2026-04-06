@@ -46,7 +46,7 @@ class BM25Retriever:
     
     def fit(self, documents: List[str]):
         """Build BM25 index."""
-        if not documents:           # ← guard
+        if not documents:           # guard
             self.avgdl = 0
             return
         self.docs = documents

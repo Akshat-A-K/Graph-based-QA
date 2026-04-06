@@ -29,7 +29,7 @@ def _fix_null_encoded(text: str) -> str:
     returns each character preceded by a null byte, e.g.:
         '\\x00e\\x00s\\x00t\\x00i\\x00m\\x00a\\x00t\\x00e\\x00d'
     Stripping the null bytes recovers the original text.  We also turn the
-    superscript-1 glyph '¹' back into the rupee sign '₹' when it immediately
+    superscript-1 glyph '\\u00b9' back into the rupee sign '\\u20b9' when it immediately
     precedes digits (common PDF font-substitution artefact).
     """
     if "\x00" not in text:
@@ -42,17 +42,17 @@ def _fix_null_encoded(text: str) -> str:
     )
     # Remove any remaining stray null bytes
     text = text.replace("\x00", "")
-    # Superscript-1 used as rupee-sign substitute: '¹634' → '₹634'
-    text = re.sub(r"¹(\d)", r"₹\1", text)
+    # Superscript-1 used as rupee-sign substitute: '\\u00b9634' -> '\\u20b9634'
+    text = re.sub(r"\u00b9(\d)", r"\u20b9\1", text)
     return text
 
 
 def _fix_spaced_chars(text: str) -> str:
     """Fix PDFs that render text with spaces between every character.
 
-    Some PDFs emit '₹ 6 3 4  c r o r e' instead of '₹634 crore'.
+    Some PDFs emit '\\u20b9 6 3 4  c r o r e' instead of '\\u20b9634 crore'.
     We detect runs of 4+ single-character tokens separated by single spaces
-    and collapse them.  This is pure text normalisation — no domain knowledge.
+    and collapse them.  This is pure text normalisation - no domain knowledge.
     """
     def _join(m: "re.Match") -> str:
         parts = m.group(0).split(" ")
@@ -62,7 +62,7 @@ def _fix_spaced_chars(text: str) -> str:
 
     text = re.sub(r"\b\w(?: \w){3,}\b", _join, text)
     # Reattach currency / symbol that got separated from its number
-    text = re.sub(r"([₹$€£¥])\s+(\d)", r"\1\2", text)
+    text = re.sub(r"([\u20b9$\u20ac\u00a3\u00a5])\s+(\d)", r"\1\2", text)
     return text
 
 

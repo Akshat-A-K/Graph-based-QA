@@ -9,15 +9,11 @@ from collections import Counter
 
 
 class QAEvaluator:
-    """Evaluate QA predictions using standard metrics"""
-
-    # -------------------------------------------------------
-    # TEXT NORMALIZATION
-    # -------------------------------------------------------
+    """Evaluate QA predictions using normalized-answer metrics."""
 
     @staticmethod
     def normalize_text(text: str) -> str:
-        """Normalize text for fair comparison"""
+        """Normalize text by lowercasing, dropping punctuation and articles."""
 
         if not text:
             return ""
@@ -35,18 +31,10 @@ class QAEvaluator:
 
         return text
 
-    # -------------------------------------------------------
-    # TOKENIZATION
-    # -------------------------------------------------------
-
     @staticmethod
     def tokenize(text: str) -> List[str]:
         """Tokenize normalized text"""
         return QAEvaluator.normalize_text(text).split()
-
-    # -------------------------------------------------------
-    # EXACT MATCH
-    # -------------------------------------------------------
 
     @staticmethod
     def exact_match(prediction: str, ground_truth: str) -> float:
@@ -54,10 +42,6 @@ class QAEvaluator:
         gt = QAEvaluator.normalize_text(ground_truth)
 
         return float(pred == gt)
-
-    # -------------------------------------------------------
-    # PRECISION / RECALL / F1
-    # -------------------------------------------------------
 
     @staticmethod
     def precision_recall_f1(prediction: str, ground_truth: str) -> Dict[str, float]:
@@ -75,21 +59,18 @@ class QAEvaluator:
         num_same = sum(common.values())
 
         if num_same == 0:
-            # Relaxed matching fallback: try substring or numeric equivalence
+            # Provide a fallback score when token overlap is zero.
             if QAEvaluator.substring_match(prediction, ground_truth):
-                # partial credit for substring matches
                 precision = 0.6
                 recall = 0.6
                 f1 = 2 * precision * recall / (precision + recall)
                 return {"precision": precision, "recall": recall, "f1": f1}
 
-            # Numeric comparison: treat numerically-equal answers as correct
+            # Treat numerically equivalent answers as exact for numeric questions.
             try:
-                import re
                 nums_pred = re.findall(r"[-+]?[0-9]*\.?[0-9]+", prediction)
                 nums_gt = re.findall(r"[-+]?[0-9]*\.?[0-9]+", ground_truth)
                 if nums_pred and nums_gt:
-                    # compare first numeric tokens
                     p = float(nums_pred[0])
                     g = float(nums_gt[0])
                     if abs(p - g) <= max(1e-6, 0.01 * max(abs(g), 1.0)):
@@ -110,10 +91,6 @@ class QAEvaluator:
             "f1": f1
         }
 
-    # -------------------------------------------------------
-    # SUBSTRING MATCH
-    # -------------------------------------------------------
-
     @staticmethod
     def substring_match(prediction: str, ground_truth: str) -> float:
 
@@ -124,10 +101,6 @@ class QAEvaluator:
             return 1.0
 
         return 0.0
-
-    # -------------------------------------------------------
-    # EVIDENCE RECALL@K
-    # -------------------------------------------------------
 
     @staticmethod
     def evidence_recall_at_k(
@@ -149,10 +122,6 @@ class QAEvaluator:
 
         return 0.0
 
-    # -------------------------------------------------------
-    # GRAPH REASONING DEPTH
-    # -------------------------------------------------------
-
     @staticmethod
     def reasoning_depth(traversal_results=None, expansion_results=None):
         """Compute reasoning depth (number of unique nodes visited).
@@ -163,7 +132,7 @@ class QAEvaluator:
         """
         nodes = set()
 
-        # If a single dict was passed in as the first argument
+        # Support both a combined results dict and explicit traversal/expansion lists.
         if isinstance(traversal_results, dict) and expansion_results is None:
             results = traversal_results
             for r in results.get("traversal_results", []):
@@ -175,12 +144,10 @@ class QAEvaluator:
                     nodes.add(r["node"])
             return len(nodes)
 
-        # Otherwise treat the two args as iterable lists (may be None)
         for r in traversal_results or []:
             try:
                 nodes.add(r["node"])
             except Exception:
-                # support simple values
                 nodes.add(r)
 
         for r in expansion_results or []:
@@ -190,10 +157,6 @@ class QAEvaluator:
                 nodes.add(r)
 
         return len(nodes)
-
-    # -------------------------------------------------------
-    # FULL EVALUATION
-    # -------------------------------------------------------
 
     @staticmethod
     def evaluate(
@@ -210,10 +173,6 @@ class QAEvaluator:
             "f1": prf["f1"],
             "substring_match": QAEvaluator.substring_match(prediction, ground_truth)
         }
-
-    # -------------------------------------------------------
-    # MULTIPLE GROUND TRUTH SUPPORT
-    # -------------------------------------------------------
 
     @staticmethod
     def evaluate_multiple(

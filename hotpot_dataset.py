@@ -1,20 +1,11 @@
 """
 hotpot_dataset.py
-=================
 Runs the Graph-based QA pipeline on HotpotQA questions.
 
-Key additions vs. previous version
-------------------------------------
-* Knowledge Graph is now built ONCE per question and actively used:
-    - KG entity paths are injected as extra evidence into the reasoner
-    - For bridge questions: shortest_path_evidence() provides multi-hop chains
-    - For comparison questions: KG entity facts augment the boolean/comparative logic
-    - KG stats (nodes, edges, communities) are recorded in qa_records
-* Improved comparison post-processing using KG facts alongside span evidence
-* Level-wise and type-wise breakdown in both terminal output and saved files
+This script evaluates bridge/comparison questions and stores detailed
+per-question graph statistics and QA metrics for reporting.
 
 Usage
------
     python hotpot_dataset.py
     python hotpot_dataset.py --num 200
     python hotpot_dataset.py --num 0
@@ -50,9 +41,7 @@ except Exception:
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional
 
-# ---------------------------------------------------------------------------
-# Optional colour support
-# ---------------------------------------------------------------------------
+# Optional color support for readable terminal summaries.
 try:
     from colorama import Fore, Style, init as colorama_init
     colorama_init(autoreset=True)
@@ -76,9 +65,7 @@ def _cprint(msg: str, color: str = "cyan") -> None:
         print(msg)
 
 
-# ---------------------------------------------------------------------------
-# Numpy JSON encoder
-# ---------------------------------------------------------------------------
+# Convert numpy types so json.dump can serialize report payloads.
 class _NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.integer):  return int(obj)
@@ -87,9 +74,7 @@ class _NumpyEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-# ---------------------------------------------------------------------------
-# Official HotpotQA normalisation / evaluation helpers
-# ---------------------------------------------------------------------------
+# Official HotpotQA normalization helpers used for EM/F1.
 def _normalize_answer(s: str) -> str:
     def remove_articles(text: str) -> str:
         return re.sub(r'\b(a|an|the)\b', ' ', text)
@@ -123,9 +108,7 @@ def compute_f1(prediction: str, ground_truth: str) -> float:
     return 2 * precision * recall / (precision + recall)
 
 
-# ---------------------------------------------------------------------------
-# Convert HotpotQA context → internal "pages" list
-# ---------------------------------------------------------------------------
+# Convert Hotpot context entries into page dictionaries used by the pipeline.
 def hotpot_context_to_pages(context: List) -> List[Dict]:
     pages = []
     for page_idx, (title, sentences) in enumerate(context, start=1):
@@ -134,9 +117,7 @@ def hotpot_context_to_pages(context: List) -> List[Dict]:
     return pages
 
 
-# ---------------------------------------------------------------------------
-# KG-augmented evidence extraction helpers
-# ---------------------------------------------------------------------------
+# Build additional KG evidence used by bridge/comparison question types.
 def _kg_evidence_for_bridge(
     kg,
     question: str,
@@ -222,9 +203,7 @@ def _kg_boolean_vote(
     return None
 
 
-# ---------------------------------------------------------------------------
-# CLI parsing
-# ---------------------------------------------------------------------------
+# Parse command line options for evaluation runs.
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run Graph-based QA on HotpotQA questions")
@@ -244,9 +223,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+# Run the end-to-end HotpotQA evaluation pipeline.
 def main():
     args = parse_args()
 
@@ -259,9 +236,7 @@ def main():
         print(f"ERROR: Dataset not found: {dataset_path}")
         sys.exit(1)
 
-    # ------------------------------------------------------------------
-    # Lazy-import pipeline components
-    # ------------------------------------------------------------------
+    # Import heavy modules only when the script runs.
     from parser.drg_nodes import build_nodes
     from parser.drg_graph import DocumentReasoningGraph
     from parser.span_extractor import SpanExtractor
@@ -273,9 +248,7 @@ def main():
 
     EMBED_MODEL = args.embed_model
 
-    # ------------------------------------------------------------------
-    # Load dataset
-    # ------------------------------------------------------------------
+    # Load dataset JSON once before sampling questions.
     print(f"Loading dataset: {dataset_path}")
     with open(dataset_path, "r", encoding="utf-8") as f:
         all_data = json.load(f)
@@ -322,15 +295,13 @@ def main():
         selected_questions = selected_questions[:num_to_run]
         print(f"Running evaluation on {num_to_run} '{args.level}' questions (seed={args.seed})\n")
 
-    # ------------------------------------------------------------------
-    # Per-question evaluation loop
-    # ------------------------------------------------------------------
+    # Evaluate each sampled question and collect report records.
     qa_records: List[Dict] = []
     sep = "-" * 72
     pipeline_start = time.time()
 
     print("=" * 72)
-    print("  HOTPOTQA — QA RESULTS  (with Knowledge Graph)")
+    print("  HOTPOTQA - QA RESULTS (with Knowledge Graph)")
     print("=" * 72)
 
     for q_idx, item in enumerate(selected_questions, start=1):
@@ -348,13 +319,13 @@ def main():
 
         q_start = time.time()
 
-        # ── 1. Context → pages ─────────────────────────────────────────
+        # Prepare context pages for downstream graph construction.
         pages = hotpot_context_to_pages(context)
         if not pages:
             print("  SKIP: empty context")
             continue
 
-        # ── 2. Sentence nodes ──────────────────────────────────────────
+        # Build sentence-level nodes from context pages.
         sentence_nodes = build_nodes(pages)
         if not sentence_nodes:
             print("  SKIP: no sentence nodes")
@@ -362,7 +333,7 @@ def main():
 
         sentence_texts = [node["text"] for node in sentence_nodes]
 
-        # ── 3. Knowledge Graph (NEW: built before DRG) ─────────────────
+        # Build the question-specific Knowledge Graph before DRG reasoning.
         kg = KnowledgeGraph(model_name=args.kg_model)
         kg.build_graph(sentence_texts)
         kg_stats = kg.get_stats()
@@ -373,7 +344,7 @@ def main():
             "white",
         )
 
-        # ── 4. Document Reasoning Graph ────────────────────────────────
+        # Build the document reasoning graph.
         drg = DocumentReasoningGraph(model_name=EMBED_MODEL)
         drg.add_nodes(sentence_nodes)
         drg.compute_embeddings()
@@ -385,7 +356,7 @@ def main():
             gc.collect()
             continue
 
-        # ── 5. Span extraction + Span Graph ───────────────────────────
+        # Build span nodes and the span graph.
         span_extractor     = SpanExtractor()
         spans              = span_extractor.extract_spans_from_nodes(sentence_nodes)
         span_graph_builder = SpanGraph(model_name=EMBED_MODEL)
@@ -401,7 +372,7 @@ def main():
             gc.collect()
             continue
 
-        # ── 6. Reasoning ───────────────────────────────────────────────
+        # Run hybrid reasoning over DRG, span graph, and KG.
         reasoner = EnhancedHybridReasoner(
             sentence_graph=drg.graph,
             span_graph=span_graph_builder.graph,
@@ -424,7 +395,7 @@ def main():
                 max_length=220,
             )
 
-        # ── 7. KG-augmented evidence injection ─────────────────────────
+        # Add bridge-specific evidence mined from KG paths.
         kg_evidence: List[str] = []
         if q_type == "bridge":
             kg_evidence = _kg_evidence_for_bridge(
@@ -433,7 +404,7 @@ def main():
             if kg_evidence:
                 _cprint(f"  [KG bridge evidence] {kg_evidence[0]}", "white")
 
-        # ── 8. Comparison post-processing (KG-enhanced) ────────────────
+        # Refine comparison answers with entity-aware and KG-aware checks.
         if q_type == "comparison":
             try:
                 from parser.comparison_utils import (
@@ -505,7 +476,7 @@ def main():
 
                         if kg_vote is not None:
                             answer = kg_vote
-                            _cprint(f"  [KG boolean vote] → {answer}", "white")
+                            _cprint(f"  [KG boolean vote] -> {answer}", "white")
                         elif any(n in all_evid for n in strong_neg) or soft_neg:
                             answer = "no"
                         elif is_both_q and e1.lower() in all_evid and e2.lower() in all_evid:
@@ -533,7 +504,7 @@ def main():
                                     (is_recent and y1 > y2)
                                 ) else e2
 
-                    # ── KG bridge path for comparison entities ─────────
+                    # Add a short KG path between compared entities when available.
                     bridge_path = kg.shortest_path_evidence(e1, e2)
                     if bridge_path:
                         kg_evidence.extend(bridge_path[:2])
@@ -547,16 +518,23 @@ def main():
 
         elapsed = time.time() - q_start
 
-        # ── 9. Evaluation ──────────────────────────────────────────────
+        # Evaluate answer quality and evidence quality for reporting.
         em = compute_exact(answer, gold_answer)
         f1 = compute_f1(answer, gold_answer)
 
-        internal_eval = {"exact_match": 0.0, "f1": 0.0}
-        recall_at_5   = 0.0
-        if answer != "No answer found" and evidence_spans:
-            internal_eval = QAEvaluator.evaluate(answer, evidence_spans[0])
-            recall_at_5   = QAEvaluator.evidence_recall_at_k(
-                evidence_spans, evidence_spans[0], k=5)
+        qa_eval = {
+            "exact_match": 0.0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "substring_match": 0.0,
+        }
+        recall_at_5 = 0.0
+        if answer != "No answer found":
+            qa_eval = QAEvaluator.evaluate(answer, gold_answer)
+            if evidence_spans:
+                recall_at_5 = QAEvaluator.evidence_recall_at_k(
+                    evidence_spans, gold_answer, k=5)
 
         reasoning_depth = QAEvaluator.reasoning_depth(
             results.get("traversal_results", []),
@@ -571,9 +549,15 @@ def main():
         confidence_label = "Low"
         if confidence >= 0.8: confidence_label = "High"
         elif confidence >= 0.45: confidence_label = "Med"
-        
+
+        metrics_line = (
+            f"Eval(P={qa_eval['precision']:.2f}, R={qa_eval['recall']:.2f}, "
+            f"F1={qa_eval['f1']:.2f}, Sub={qa_eval['substring_match']:.0f}, "
+            f"R@5={recall_at_5:.2f})"
+        )
         print(
-            f"EM={em:.0f}  F1={f1:.2f}  Conf={confidence_label}({confidence:.2%})"
+            f"EM={em:.0f}  F1={f1:.2f}  {metrics_line}"
+            f"  Conf={confidence_label}({confidence:.2%})"
             f"  Depth={reasoning_depth}  Time={elapsed:.2f}s"
         )
         print(sep)
@@ -595,9 +579,13 @@ def main():
             "kg_evidence":      kg_evidence[:5],
             "reasoning_depth":  reasoning_depth,
             "internal_eval": {
-                "exact_match": round(internal_eval["exact_match"], 4),
-                "f1":          round(internal_eval["f1"], 4),
-                "recall_at_5": round(recall_at_5, 4),
+                "exact_match":      round(qa_eval["exact_match"], 4),
+                "precision":        round(qa_eval["precision"], 4),
+                "recall":           round(qa_eval["recall"], 4),
+                "f1":               round(qa_eval["f1"], 4),
+                "substring_match":  round(qa_eval["substring_match"], 4),
+                "recall_at_5":      round(recall_at_5, 4),
+                "evidence_recall_at_5": round(recall_at_5, 4),
             },
             "retrieval": {
                 "hybrid":    len(results.get("hybrid_results", [])),
@@ -619,21 +607,25 @@ def main():
             },
         })
 
-        # ── 10. Free memory ────────────────────────────────────────────
+        # Release graph/reasoner objects to reduce memory growth.
         del drg, span_graph_builder, span_extractor, reasoner, results, kg
         gc.collect()
         if _TORCH_AVAILABLE and torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    # ------------------------------------------------------------------
-    # Aggregate metrics
-    # ------------------------------------------------------------------
+    # Compute aggregate metrics across all processed questions.
     total_time = time.time() - pipeline_start
     answered   = [r for r in qa_records if r["predicted_answer"] != "No answer found"]
     total_q    = len(qa_records)
 
     avg_em    = sum(r["exact_match"] for r in qa_records) / max(total_q, 1)
     avg_f1    = sum(r["f1"] for r in qa_records) / max(total_q, 1)
+    avg_precision = sum(r["internal_eval"]["precision"] for r in qa_records) / max(total_q, 1)
+    avg_recall = sum(r["internal_eval"]["recall"] for r in qa_records) / max(total_q, 1)
+    avg_substring = sum(r["internal_eval"]["substring_match"] for r in qa_records) / max(total_q, 1)
+    avg_evidence_recall_at_5 = sum(
+        r["internal_eval"]["evidence_recall_at_5"] for r in qa_records
+    ) / max(total_q, 1)
     avg_conf  = sum(r["confidence"] for r in answered) / max(len(answered), 1)
     high_conf = sum(1 for r in answered if r["confidence"] >= 0.70)
     med_conf  = sum(1 for r in answered if 0.45 <= r["confidence"] < 0.70)
@@ -652,7 +644,19 @@ def main():
         "comparison": sum(r["f1"] for r in comp_recs)   / max(len(comp_recs),   1),
     }
 
-    # KG aggregate stats
+    # Aggregate graph size statistics for all three graph layers.
+    drg_nodes_avg = sum(
+        r["graph_stats"].get("drg_nodes", 0) for r in qa_records
+    ) / max(total_q, 1)
+    drg_edges_avg = sum(
+        r["graph_stats"].get("drg_edges", 0) for r in qa_records
+    ) / max(total_q, 1)
+    span_nodes_avg = sum(
+        r["graph_stats"].get("span_nodes", 0) for r in qa_records
+    ) / max(total_q, 1)
+    span_edges_avg = sum(
+        r["graph_stats"].get("span_edges", 0) for r in qa_records
+    ) / max(total_q, 1)
     kg_nodes_avg = sum(
         r["graph_stats"].get("kg_nodes", 0) for r in qa_records
     ) / max(total_q, 1)
@@ -670,31 +674,43 @@ def main():
         "answer_rate_pct":         round(len(answered) / max(total_q, 1) * 100, 1),
         "exact_match":             round(avg_em, 4),
         "f1":                      round(avg_f1, 4),
+        "precision":               round(avg_precision, 4),
+        "recall":                  round(avg_recall, 4),
+        "substring_match":         round(avg_substring, 4),
+        "evidence_recall_at_5":    round(avg_evidence_recall_at_5, 4),
         "em_by_type":              {k: round(v, 4) for k, v in type_em.items()},
         "f1_by_type":              {k: round(v, 4) for k, v in type_f1.items()},
         "avg_reasoning_depth":     round(avg_depth, 2),
         "avg_time_per_question_s": round(avg_time, 3),
         "total_pipeline_time_s":   round(total_time, 2),
+        "drg_avg_nodes":           round(drg_nodes_avg, 1),
+        "drg_avg_edges":           round(drg_edges_avg, 1),
+        "span_avg_nodes":          round(span_nodes_avg, 1),
+        "span_avg_edges":          round(span_edges_avg, 1),
         "kg_avg_nodes":            round(kg_nodes_avg, 1),
         "kg_avg_edges":            round(kg_edges_avg, 1),
     }
 
     print("\n" + "=" * 72)
-    _cprint("  ANALYSIS SUMMARY — HOTPOTQA  (with KG)", "cyan")
+    _cprint("  ANALYSIS SUMMARY - HOTPOTQA ", "cyan")
     print("=" * 72)
     print(f"  Questions evaluated  : {total_q}")
     print(f"  Answered             : {len(answered)}  ({analysis['answer_rate_pct']}%)")
     print(f"  Exact Match (EM)     : {avg_em:.4f}  ({avg_em*100:.1f}%)")
     print(f"  F1 Score             : {avg_f1:.4f}  ({avg_f1*100:.1f}%)")
+    print(f"  Precision / Recall   : {avg_precision:.4f} / {avg_recall:.4f}")
+    print(f"  Substring / R@5      : {avg_substring:.4f} / {avg_evidence_recall_at_5:.4f}")
     print(f"  EM bridge / compare  : {type_em['bridge']:.4f} / {type_em['comparison']:.4f}")
     print(f"  F1 bridge / compare  : {type_f1['bridge']:.4f} / {type_f1['comparison']:.4f}")
     print(f"  Avg reasoning depth  : {avg_depth:.2f}")
+    print(f"  Avg DRG nodes/edges  : {drg_nodes_avg:.0f} / {drg_edges_avg:.0f}")
+    print(f"  Avg Span nodes/edges : {span_nodes_avg:.0f} / {span_edges_avg:.0f}")
     print(f"  Avg KG nodes/edges   : {kg_nodes_avg:.0f} / {kg_edges_avg:.0f}")
     print(f"  Avg time / question  : {avg_time:.2f}s")
     print(f"  Total pipeline time  : {total_time/60:.1f}min  ({total_time:.0f}s)")
     print("=" * 72)
 
-    # Level-wise breakdown
+    # Show level-wise summary when all difficulty levels are included.
     if args.level == "all":
         print("\n" + "=" * 72)
         _cprint("  LEVEL-WISE BREAKDOWN", "cyan")
@@ -713,19 +729,23 @@ def main():
             lvl_comp_em   = sum(r["exact_match"] for r in lvl_comp)   / max(len(lvl_comp),   1)
             lvl_bridge_f1 = sum(r["f1"] for r in lvl_bridge) / max(len(lvl_bridge), 1)
             lvl_comp_f1   = sum(r["f1"] for r in lvl_comp)   / max(len(lvl_comp),   1)
+            lvl_precision = sum(r["internal_eval"]["precision"] for r in lvl_recs) / max(lvl_total, 1)
+            lvl_recall = sum(r["internal_eval"]["recall"] for r in lvl_recs) / max(lvl_total, 1)
+            lvl_substring = sum(r["internal_eval"]["substring_match"] for r in lvl_recs) / max(lvl_total, 1)
+            lvl_r5 = sum(r["internal_eval"]["evidence_recall_at_5"] for r in lvl_recs) / max(lvl_total, 1)
             print(f"\n{lvl.upper()}:")
             print(f"  Questions evaluated  : {lvl_total}")
             print(f"  Answered             : {len(lvl_answered)}  ({len(lvl_answered)/max(lvl_total,1)*100:.1f}%)")
             print(f"  Question types       : {len(lvl_bridge)} bridge / {len(lvl_comp)} comparison")
             print(f"  Exact Match (EM)     : {lvl_em:.4f}  ({lvl_em*100:.1f}%)")
             print(f"  F1 Score             : {lvl_f1:.4f}  ({lvl_f1*100:.1f}%)")
+            print(f"  Precision / Recall   : {lvl_precision:.4f} / {lvl_recall:.4f}")
+            print(f"  Substring / R@5      : {lvl_substring:.4f} / {lvl_r5:.4f}")
             print(f"  EM bridge / compare  : {lvl_bridge_em:.4f} / {lvl_comp_em:.4f}")
             print(f"  F1 bridge / compare  : {lvl_bridge_f1:.4f} / {lvl_comp_f1:.4f}")
         print("\n" + "=" * 72)
 
-    # ------------------------------------------------------------------
-    # Save outputs
-    # ------------------------------------------------------------------
+    # Save JSON and text reports for the final submission/report.
     out_dir   = os.path.dirname(os.path.abspath(dataset_path))
     json_path = os.path.join(out_dir, "hotpot_all_qa_output.json")
     txt_path  = os.path.join(out_dir, "hotpot_all_qa_output.txt")
@@ -738,7 +758,7 @@ def main():
 
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2, cls=_NumpyEncoder)
-    print(f"\nJSON output saved → {json_path}")
+    print(f"\nJSON output saved -> {json_path}")
 
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write("HOTPOTQA ALL LEVELS QA OUTPUT  (with Knowledge Graph)\n")
@@ -757,9 +777,25 @@ def main():
             f.write(f"  Question   : {r['question']}\n")
             f.write(f"  Gold       : {r['gold_answer']}\n")
             f.write(f"  Predicted  : {r['predicted_answer']}\n")
+            ie = r["internal_eval"]
             f.write(f"  EM={r['exact_match']:.0f}  F1={r['f1']:.4f}"
                     f"  Time={r['time_s']}s\n")
+            f.write(
+                f"  Eval       : P={ie.get('precision', 0.0):.4f}  "
+                f"R={ie.get('recall', 0.0):.4f}  "
+                f"F1={ie.get('f1', 0.0):.4f}  "
+                f"Sub={ie.get('substring_match', 0.0):.4f}  "
+                f"R@5={ie.get('evidence_recall_at_5', 0.0):.4f}\n"
+            )
             gs = r["graph_stats"]
+            f.write(
+                f"  DRG        : {gs.get('drg_nodes',0)} nodes  "
+                f"{gs.get('drg_edges',0)} edges\n"
+            )
+            f.write(
+                f"  Span       : {gs.get('span_nodes',0)} nodes  "
+                f"{gs.get('span_edges',0)} edges\n"
+            )
             f.write(
                 f"  KG         : {gs.get('kg_nodes',0)} nodes  "
                 f"{gs.get('kg_edges',0)} edges  "
@@ -771,7 +807,7 @@ def main():
                 f.write(f"  Top span   : {r['evidence_spans'][0][:120].strip()}...\n")
             f.write("-" * 72 + "\n")
 
-    print(f"Text report saved → {txt_path}\n")
+    print(f"Text report saved -> {txt_path}\n")
 
 
 if __name__ == "__main__":
