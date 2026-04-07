@@ -130,6 +130,24 @@ python hotpot_dataset.py --level medium --num 50
 python hotpot_dataset.py --level hard --num 50
 ```
 
+## Run LLM Evaluation Only
+
+Run the LLM baselines on the same sampled questions used by the graph pipeline:
+
+```bash
+python -m evaluation.run_eval --mode llm --num 6 --seed 42
+```
+
+This evaluates the closed-book, open-book, and naive RAG baselines on 6
+questions and writes the results to `results/llm_eval_results.json` and
+`results/llm_eval_results.txt`.
+
+If you want to run only the LLM evaluator module directly, you can also use:
+
+```bash
+python -m evaluation.llm.llm_eval --num 6 --seed 42
+```
+
 ## Notes
 
 - Keep hotpot_train_v1.1.json in project root for hotpot_dataset.py.

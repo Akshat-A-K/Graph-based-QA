@@ -1,0 +1,31 @@
+NAIVE RAG EVALUATION REPORT
+Generated : 2026-04-07T14:16:19
+Model     : llama3
+
+ANALYSIS SUMMARY
+========================================================================
+  system                                  : Naive RAG
+  total_questions                         : 3
+  answered                                : 3
+  unanswered                              : 0
+  answer_rate_pct                         : 100.0
+  exact_match                             : 0.6667
+  precision                               : 0.7778
+  recall                                  : 1.0
+  f1                                      : 0.8333
+  substring_match                         : 1.0
+  em_by_level                             : {'easy': 1.0, 'medium': 0.0, 'hard': 1.0}
+  f1_by_level                             : {'easy': 1.0, 'medium': 0.5, 'hard': 1.0}
+  precision_by_level                      : {'easy': 1.0, 'medium': 0.3333, 'hard': 1.0}
+  recall_by_level                         : {'easy': 1.0, 'medium': 1.0, 'hard': 1.0}
+  substring_by_level                      : {'easy': 1.0, 'medium': 1.0, 'hard': 1.0}
+  questions_by_level                      : {'easy': 1, 'medium': 1, 'hard': 1}
+  answered_by_level                       : {'easy': 1, 'medium': 1, 'hard': 1}
+  bridge_by_level                         : {'easy': 0, 'medium': 0, 'hard': 0}
+  comparison_by_level                     : {'easy': 1, 'medium': 1, 'hard': 1}
+  em_by_type                              : {'bridge': 0.0, 'comparison': 0.6667}
+  f1_by_type                              : {'bridge': 0.0, 'comparison': 0.8333}
+  evidence_recall_at_5                    : 0.6667
+  avg_reasoning_depth                     : None
+  avg_time_per_question_s                 : 3.769
+  total_pipeline_time_s                   : 215.82

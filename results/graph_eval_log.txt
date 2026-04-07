@@ -1,0 +1,17 @@
+GRAPH EVAL LOG  (Graph-Based QA Pipeline on HotpotQA)
+Generated  : 2026-04-07T16:38:44
+Embed      : BAAI/bge-large-en-v1.5  |  KG: en_core_web_trf
+Questions  : 1  (seed=42)
+================================================================================
+
+
+--------------------------------------------------------------------------------
+Q0001/1  [comparison|easy]  id=5a8b324855429950cd6afc6c
+Question : What is an IBA Official Cocktail composed of gin, dry Vermouth, orange bitters, maraschino and Absinthe, Staten Island Ferry or Tuxedo ?
+Gold     : Tuxedo
+  [KG] nodes=0  edges=0  communities=0  density=0.0000
+  [comp:select_one] e1='dry Vermouth, orange bitters, maraschino and Absinthe, Staten Island Ferry' e2='Tuxedo'
+Predicted: The Tuxedo
+EM=1  F1=1.0000  P=1.0000  R=1.0000  Sub=1  Conf=High(91.57%)  Depth=7  Time=50.27s
+KG nodes=0 edges=0 comms=0 DRG_nodes=31 Span_nodes=120
+--------------------------------------------------------------------------------

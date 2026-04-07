@@ -1,0 +1,57 @@
+========================================================================
+  ANALYSIS SUMMARY - HOTPOTQA
+========================================================================
+  Questions evaluated  : 6
+  Answered             : 6  (100.0%)
+  Exact Match (EM)     : 0.8333  (83.3%)
+  F1 Score             : 0.8333  (83.3%)
+  Precision / Recall   : 0.8333 / 0.8333
+  Substring / R@5      : 0.8333 / 0.5000
+  EM bridge / compare  : 0.6667 / 1.0000
+  F1 bridge / compare  : 0.6667 / 1.0000
+  Avg reasoning depth  : 6.33
+  Avg DRG nodes/edges  : 35 / 24
+  Avg Span nodes/edges : 232 / 2360
+  Avg KG nodes/edges   : 63 / 50
+  Avg time / question  : 61.09s
+  Total pipeline time  : 6.2min  (374s)
+========================================================================
+
+========================================================================
+  LEVEL-WISE BREAKDOWN
+========================================================================
+
+EASY:
+  Questions evaluated  : 2
+  Answered             : 2  (100.0%)
+  Question types       : 1 bridge / 1 comparison
+  Exact Match (EM)     : 1.0000  (100.0%)
+  F1 Score             : 1.0000  (100.0%)
+  Precision / Recall   : 1.0000 / 1.0000
+  Substring / R@5      : 1.0000 / 0.5000
+  EM bridge / compare  : 1.0000 / 1.0000
+  F1 bridge / compare  : 1.0000 / 1.0000
+
+MEDIUM:
+  Questions evaluated  : 2
+  Answered             : 2  (100.0%)
+  Question types       : 1 bridge / 1 comparison
+  Exact Match (EM)     : 0.5000  (50.0%)
+  F1 Score             : 0.5000  (50.0%)
+  Precision / Recall   : 0.5000 / 0.5000
+  Substring / R@5      : 0.5000 / 0.0000
+  EM bridge / compare  : 0.0000 / 1.0000
+  F1 bridge / compare  : 0.0000 / 1.0000
+
+HARD:
+  Questions evaluated  : 2
+  Answered             : 2  (100.0%)
+  Question types       : 1 bridge / 1 comparison
+  Exact Match (EM)     : 1.0000  (100.0%)
+  F1 Score             : 1.0000  (100.0%)
+  Precision / Recall   : 1.0000 / 1.0000
+  Substring / R@5      : 1.0000 / 1.0000
+  EM bridge / compare  : 1.0000 / 1.0000
+  F1 bridge / compare  : 1.0000 / 1.0000
+
+========================================================================

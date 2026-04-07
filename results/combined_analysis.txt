@@ -1,0 +1,58 @@
+GRAPH-BASED QA — FINAL COMPARISON TABLE
+Generated: 2026-04-07T16:39:39
+
+
+==================================================================
+  FINAL EVALUATION — HEAD-TO-HEAD COMPARISON  
+  Graph-Based QA  vs  LLM (Llama3)            
+==================================================================
+|  Metric                                    |  GBDQA (Graph)  |
+|  ── OVERALL ────────────────────────────── |                 |
+|  Questions evaluated                       |        1        |
+|  Answered                                  |   1  (100.0%)   |
+|  Exact Match (EM)                          | 1.0000  (100.0%) |
+|  F1 Score                                  | 1.0000  (100.0%) |
+|  Precision / Recall                        | 1.0000 / 1.0000 |
+|  Substring / R@5                           | 1.0000 / 1.0000 |
+|  EM bridge / compare                       | 0.0000 / 1.0000 |
+|  F1 bridge / compare                       | 0.0000 / 1.0000 |
+|  Avg reasoning depth                       |      7.00       |
+|  Avg DRG nodes/edges                       |     31 / 20     |
+|  Avg Span nodes/edges                      |   120 / 1389    |
+|  Avg KG nodes/edges                        |      0 / 0      |
+|  Avg time / question                       |     50.27s      |
+|  Total pipeline time                       |  0.9min  (55s)  |
+|  ── LEVEL-WISE BREAKDOWN ───────────────── |                 |
+|    EASY                                    |                 |
+|    Questions evaluated                     |        1        |
+|    Answered                                |   1  (100.0%)   |
+|    Exact Match (EM)                        | 1.0000  (100.0%) |
+|    F1 Score                                | 1.0000  (100.0%) |
+|    Precision / Recall                      | 1.0000 / 1.0000 |
+|    Substring / R@5                         | 1.0000 / 1.0000 |
+|    EM bridge / compare                     | 0.0000 / 1.0000 |
+|    F1 bridge / compare                     | 0.0000 / 1.0000 |
+
+|    MEDIUM                                  |                 |
+|    Questions evaluated                     |        0        |
+|    Answered                                |        0        |
+|    Exact Match (EM)                        | 0.0000  (0.0%)  |
+|    F1 Score                                | 0.0000  (0.0%)  |
+|    Precision / Recall                      | 0.0000 / 0.0000 |
+|    Substring / R@5                         | 0.0000 / 0.0000 |
+|    EM bridge / compare                     | 0.0000 / 1.0000 |
+|    F1 bridge / compare                     | 0.0000 / 1.0000 |
+
+|    HARD                                    |                 |
+|    Questions evaluated                     |        0        |
+|    Answered                                |        0        |
+|    Exact Match (EM)                        | 0.0000  (0.0%)  |
+|    F1 Score                                | 0.0000  (0.0%)  |
+|    Precision / Recall                      | 0.0000 / 0.0000 |
+|    Substring / R@5                         | 0.0000 / 0.0000 |
+|    EM bridge / compare                     | 0.0000 / 1.0000 |
+|    F1 bridge / compare                     | 0.0000 / 1.0000 |
+
+  ↓ Lower is better   |   ↑ Higher is better
+  N/A  = metric not available for this system
+  R@5  = evidence recall at 5

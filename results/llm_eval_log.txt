@@ -1,0 +1,39 @@
+LLM EVALUATION LOG  (Llama3 via Ollama)
+Generated  : 2026-04-07T14:11:32
+Model      : llama3
+Questions  : 3  (seed=42)
+================================================================================
+
+
+--------------------------------------------------------------------------------
+Q0001/3  [comparison|medium]  id=5abbd9445542993f40c73be7
+Question  : Are the Albuquerque International Sunport and the Charleston International Airport both located in the US?
+Gold      : yes
+
+  [LLM]
+    Predicted : Yes.
+    EM=1  P=1.0000  R=1.0000  F1=1.0000  Sub=1  Latency=43038ms  Time=43.33s
+
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+Q0002/3  [comparison|easy]  id=5a8b324855429950cd6afc6c
+Question  : What is an IBA Official Cocktail composed of gin, dry Vermouth, orange bitters, maraschino and Absinthe, Staten Island Ferry or Tuxedo ?
+Gold      : Tuxedo
+
+  [LLM]
+    Predicted : Tuxedo.
+    EM=1  P=1.0000  R=1.0000  F1=1.0000  Sub=1  Latency=9383ms  Time=9.61s
+
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+Q0003/3  [comparison|hard]  id=5a792d4e55429907847277d8
+Question  : Which documentary came first, 10 Questions for the Dalai Lama or Bougainville – Our Island Our Fight?
+Gold      : Bougainville – Our Island Our Fight
+
+  [LLM]
+    Predicted : Bougainville – Our Island Our Fight.
+    EM=1  P=1.0000  R=1.0000  F1=1.0000  Sub=1  Latency=9520ms  Time=9.73s
+
+--------------------------------------------------------------------------------

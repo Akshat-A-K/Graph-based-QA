@@ -1,0 +1,58 @@
+LLM EVALUATION REPORT
+Generated : 2026-04-07T14:12:35
+Model     : llama3
+
+
+================================================================================
+LLM
+================================================================================
+  system                                  : LLM
+  total_questions                         : 3
+  answered                                : 3
+  unanswered                              : 0
+  answer_rate_pct                         : 100.0
+  exact_match                             : 1.0
+  precision                               : 1.0
+  recall                                  : 1.0
+  f1                                      : 1.0
+  substring_match                         : 1.0
+  avg_time_per_question_s                 : 20.889
+  em_by_level                             : {'easy': 1.0, 'medium': 1.0, 'hard': 1.0}
+  f1_by_level                             : {'easy': 1.0, 'medium': 1.0, 'hard': 1.0}
+  precision_by_level                      : {'easy': 1.0, 'medium': 1.0, 'hard': 1.0}
+  recall_by_level                         : {'easy': 1.0, 'medium': 1.0, 'hard': 1.0}
+  substring_by_level                      : {'easy': 1.0, 'medium': 1.0, 'hard': 1.0}
+  questions_by_level                      : {'easy': 1, 'medium': 1, 'hard': 1}
+  answered_by_level                       : {'easy': 1, 'medium': 1, 'hard': 1}
+  bridge_by_level                         : {'easy': 0, 'medium': 0, 'hard': 0}
+  comparison_by_level                     : {'easy': 1, 'medium': 1, 'hard': 1}
+  em_by_type                              : {'bridge': 0.0, 'comparison': 1.0}
+  f1_by_type                              : {'bridge': 0.0, 'comparison': 1.0}
+  evidence_recall_at_5_by_level           : {'easy': None, 'medium': None, 'hard': None}
+  evidence_recall_at_5                    : None
+  avg_reasoning_depth                     : None
+  total_pipeline_time_s                   : 62.78
+
+QA RECORDS
+--------------------------------------------------------------------------------
+
+Q0001 [comparison|medium] id=5abbd9445542993f40c73be7
+  Question  : Are the Albuquerque International Sunport and the Charleston International Airport both located in the US?
+  Gold      : yes
+  Predicted : Yes.
+  EM=1  P=1.0000  R=1.0000  F1=1.0000  Sub=1  Latency=43038ms
+--------------------------------------------------------------------------------
+
+Q0002 [comparison|easy] id=5a8b324855429950cd6afc6c
+  Question  : What is an IBA Official Cocktail composed of gin, dry Vermouth, orange bitters, maraschino and Absinthe, Staten Island Ferry or Tuxedo ?
+  Gold      : Tuxedo
+  Predicted : Tuxedo.
+  EM=1  P=1.0000  R=1.0000  F1=1.0000  Sub=1  Latency=9383ms
+--------------------------------------------------------------------------------
+
+Q0003 [comparison|hard] id=5a792d4e55429907847277d8
+  Question  : Which documentary came first, 10 Questions for the Dalai Lama or Bougainville – Our Island Our Fight?
+  Gold      : Bougainville – Our Island Our Fight
+  Predicted : Bougainville – Our Island Our Fight.
+  EM=1  P=1.0000  R=1.0000  F1=1.0000  Sub=1  Latency=9520ms
+--------------------------------------------------------------------------------

@@ -1,0 +1,29 @@
+NAIVE RAG EVALUATION LOG
+Generated  : 2026-04-07T14:12:44
+Questions  : 3  (seed=42)
+================================================================================
+
+
+--------------------------------------------------------------------------------
+Q0001/3  [comparison|medium]  id=5abbd9445542993f40c73be7
+Question : Are the Albuquerque International Sunport and the Charleston International Airport both located in the US?
+Gold     : yes
+Predicted: Yes, they are.
+EM=0  F1=0.5000  P=0.3333  R=1.0000  Sub=1  R@5=0  Latency=2564ms  Time=2.78s
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+Q0002/3  [comparison|easy]  id=5a8b324855429950cd6afc6c
+Question : What is an IBA Official Cocktail composed of gin, dry Vermouth, orange bitters, maraschino and Absinthe, Staten Island Ferry or Tuxedo ?
+Gold     : Tuxedo
+Predicted: The Tuxedo.
+EM=1  F1=1.0000  P=1.0000  R=1.0000  Sub=1  R@5=1  Latency=3709ms  Time=3.96s
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+Q0003/3  [comparison|hard]  id=5a792d4e55429907847277d8
+Question : Which documentary came first, 10 Questions for the Dalai Lama or Bougainville – Our Island Our Fight?
+Gold     : Bougainville – Our Island Our Fight
+Predicted: Bougainville – Our Island Our Fight.
+EM=1  F1=1.0000  P=1.0000  R=1.0000  Sub=1  R@5=1  Latency=4330ms  Time=4.57s
+--------------------------------------------------------------------------------
