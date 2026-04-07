@@ -4,6 +4,8 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import streamlit as st
 import tempfile
+import re
+from typing import List, Optional
 
 from parser.pdf_parser import extract_document_with_tables
 from parser.drg_nodes import build_nodes
@@ -131,6 +133,166 @@ def extract_answer_text(results, span_graph, query, reasoner=None, max_length=30
     )
 
 
+def _kg_evidence_for_entity(kg, entity: str, max_hops: int = 2) -> List[str]:
+    triples = kg.query_entity(entity, max_hops=max_hops)
+    return [f"{t['subject']} {t['relation']} {t['object']}" for t in triples[:8]]
+
+
+def _kg_boolean_vote(kg, entity1: str, entity2: str, question: str) -> Optional[str]:
+    if kg is None or kg.graph.number_of_nodes() == 0:
+        return None
+
+    facts1 = _kg_evidence_for_entity(kg, entity1)
+    facts2 = _kg_evidence_for_entity(kg, entity2)
+    all_facts = " ".join(facts1 + facts2).lower()
+
+    neg_patterns = [
+        r'\bnot\b', r'\bnever\b', r'\bno\b', r'\bneither\b',
+        r"n't\b", r'\bdifferent\b', r'\bvaries\b',
+    ]
+    neg_count = sum(len(re.findall(p, all_facts)) for p in neg_patterns)
+
+    q_lower = question.lower()
+    both_kw = ["both", "same", "also", "either", "share", "similar"]
+
+    e1_present = entity1.lower() in all_facts
+    e2_present = entity2.lower() in all_facts
+
+    if neg_count >= 2:
+        return "no"
+    if any(w in q_lower for w in both_kw) and e1_present and e2_present and neg_count == 0:
+        return "yes"
+    return None
+
+
+def refine_comparison_answer(question: str, answer: str, graphs: dict) -> str:
+    """Mirror comparison refinement from hotpot_dataset for app predictions."""
+    try:
+        from parser.comparison_utils import (
+            extract_comparison_entities,
+            classify_comparison_type,
+        )
+
+        kg = graphs.get('kg')
+        spans = graphs.get('spans', [])
+        pages = graphs.get('pages', [])
+
+        e1, e2 = extract_comparison_entities(question)
+        comp_subtype = classify_comparison_type(question)
+
+        def _trim_answer_text(text: str) -> str:
+            text = (text or "").strip()
+            text = re.sub(r'^[\s\("\'\[]+', '', text)
+            text = re.sub(r'[\s\)\]\.\,\;\:\!\?"\']+$', '', text)
+            return text.strip()
+
+        def _cmp_norm(text: str) -> str:
+            return re.sub(r'[^a-z0-9]+', ' ', (text or '').lower()).strip()
+
+        def _entity_match_score(answer_text: str, entity: str) -> int:
+            ans = _cmp_norm(answer_text)
+            ent = _cmp_norm(entity)
+            if not ans or not ent:
+                return 0
+            score = 0
+            if ent in ans or ans in ent:
+                score += 5
+            score += len(set(ans.split()) & set(ent.split()))
+            return score
+
+        def _clean_entity(ent: str) -> str:
+            noise = r'^(are\s+the|is\s+the|are\s+|is\s+|the\s+|both\s+)'
+            return re.sub(noise, '', ent, flags=re.IGNORECASE).strip()
+
+        def _retrieve(entity: str) -> List[str]:
+            hits: List[str] = []
+            for n in spans:
+                text = n.get("text", "") if isinstance(n, dict) else str(n)
+                if entity.lower() in text.lower():
+                    hits.append(text)
+                if len(hits) >= 5:
+                    break
+            if len(hits) < 5:
+                for p in pages:
+                    p_text = p.get("text", "") if isinstance(p, dict) else ""
+                    if entity.lower() in p_text.lower():
+                        hits.append(p_text)
+                    if len(hits) >= 5:
+                        break
+            if kg is not None:
+                hits.extend(_kg_evidence_for_entity(kg, entity))
+            return hits
+
+        if e1 and e2:
+            e1 = _clean_entity(e1)
+            e2 = _clean_entity(e2)
+            e1_texts = _retrieve(e1)
+            e2_texts = _retrieve(e2)
+            all_evid = " ".join(e1_texts + e2_texts).lower()
+
+            if comp_subtype == "boolean":
+                kg_vote = _kg_boolean_vote(kg, e1, e2, question) if kg is not None else None
+                strong_neg = [
+                    "neither", "only one", "not both",
+                    "different countr", "different locat", "not the same"
+                ]
+                soft_neg = any(
+                    re.search(
+                        r'\bnot\s+(?:located|headquartered|based|available|a\s+\w+|in\s+the)',
+                        " ".join(_retrieve(ent)).lower()
+                    )
+                    for ent in [e1, e2]
+                )
+                q_lower = question.lower()
+                both_kw = ["both", "same", "also", "either", "share"]
+                is_both_q = any(w in q_lower for w in both_kw)
+
+                if kg_vote is not None:
+                    answer = kg_vote
+                elif any(n in all_evid for n in strong_neg) or soft_neg:
+                    answer = "no"
+                elif is_both_q and e1.lower() in all_evid and e2.lower() in all_evid:
+                    answer = "yes"
+                elif e1.lower() in all_evid and e2.lower() in all_evid:
+                    answer = "yes"
+
+            if comp_subtype == "boolean":
+                ans_norm = _cmp_norm(answer)
+                if re.search(r'\byes\b', ans_norm):
+                    answer = "yes"
+                elif re.search(r'\bno\b', ans_norm):
+                    answer = "no"
+                else:
+                    neg_hits = [" not ", " no ", " neither ", " different ", " not both "]
+                    answer = "no" if any(h in f" {all_evid} " for h in neg_hits) else "yes"
+
+            if comp_subtype in ("comparative", "select_one"):
+                answer = _trim_answer_text(answer)
+                s1 = _entity_match_score(answer, e1)
+                s2 = _entity_match_score(answer, e2)
+                if s1 > s2:
+                    answer = e1
+                elif s2 > s1:
+                    answer = e2
+                else:
+                    answer = e1 if len(e1_texts) >= len(e2_texts) else e2
+
+        # Fallback strict enforcement for boolean comparison style questions.
+        if comp_subtype == "boolean" and str(answer).lower() not in ("yes", "no"):
+            ans_norm = _cmp_norm(answer)
+            if re.search(r'\byes\b', ans_norm):
+                answer = "yes"
+            elif re.search(r'\bno\b', ans_norm):
+                answer = "no"
+            else:
+                answer = "no"
+
+        return answer
+
+    except Exception:
+        return answer
+
+
 # Sidebar - PDF Upload
 with st.sidebar:
     st.header("Upload Document")
@@ -201,6 +363,9 @@ if st.session_state.graphs:
                 question,
                 reasoner=st.session_state.graphs['reasoner']
             )
+
+            # Keep app behavior aligned with hotpot_dataset comparison rules.
+            answer = refine_comparison_answer(question, answer, st.session_state.graphs)
             
             # Styled answer box with proper HTML escaping
             answer_clean = answer.replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')

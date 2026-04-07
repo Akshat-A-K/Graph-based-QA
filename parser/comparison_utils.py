@@ -4,6 +4,7 @@ from typing import Tuple, Optional
 BOOLEAN_PATTERNS = [
     r'^are\s+both\b',
     r'^do\s+both\b',
+    r'^does\s+both\b',
     r'^did\s+both\b',
     r'^is\s+.{0,60}\s+or\s+.{0,60}\b',
     r'^are\s+both\s+',
@@ -11,6 +12,7 @@ BOOLEAN_PATTERNS = [
     r'^are\s+[a-z]',            # "Are both..." / "Are Catasetum..."
     r'^did\s+',                 # "Did both X and Y..."
     r'^do\s+',                  # "Do both X and Y..."
+    r'^does\s+',                # "Does X ...?"
     r'^is\s+',                  # "Is X or Y..."
     r'\bboth\s+located\b',
     r'\bboth\s+headquartered\b',
@@ -109,7 +111,7 @@ def extract_comparison_entities(question: str) -> Tuple[Optional[str], Optional[
     # 4. "both X and Y" - only when "both" precedes entities (not at end)
     # "Are both X and Y..." or "both X and Y share..."
     and_match = re.search(
-        r'\bboth\s+(?:the\s+)?(.{2,80}?)\s+and\s+(?:the\s+)?(.{2,80?})'
+        r'\bboth\s+(?:the\s+)?(.{2,80}?)\s+and\s+(?:the\s+)?(.{2,80}?)'
         r'(?=\s+(?:are|were|have|do|did|share|is|a\b|an\b|\?))',
         question, re.IGNORECASE
     )
@@ -130,7 +132,7 @@ def extract_comparison_entities(question: str) -> Tuple[Optional[str], Optional[
     # Extract around "and" between question start and "both"
     are_and_both = re.search(
         r'(?:Are|Is|Were|Was)\s+(?:the\s+)?(.{2,80}?)\s+and\s+'
-        r'(?:the\s+)?(.{2,80?})\s+both\b',
+        r'(?:the\s+)?(.{2,80}?)\s+both\b',
         question, re.IGNORECASE
     )
     if are_and_both:

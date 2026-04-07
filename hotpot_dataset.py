@@ -300,6 +300,82 @@ def main():
     qa_records: List[Dict] = []
     sep = "-" * 72
     pipeline_start = time.time()
+    checkpoint_every = 100
+
+    # Output paths are prepared up-front so we can checkpoint during the run.
+    out_dir   = os.path.dirname(os.path.abspath(dataset_path))
+    json_path = os.path.join(out_dir, "hotpot_all_qa_output.json")
+    txt_path  = os.path.join(out_dir, "hotpot_all_qa_output.txt")
+
+    def _write_checkpoint_outputs() -> None:
+        """Persist partial results so long runs can be resumed/inspected."""
+        total_q_ckpt = len(qa_records)
+        if total_q_ckpt == 0:
+            return
+
+        answered_ckpt = [r for r in qa_records if r["predicted_answer"] != "No answer found"]
+        bridge_ckpt = [r for r in qa_records if r["type"] == "bridge"]
+        comp_ckpt   = [r for r in qa_records if r["type"] == "comparison"]
+        total_time_ckpt = time.time() - pipeline_start
+
+        analysis_ckpt = {
+            "dataset":                 os.path.basename(dataset_path),
+            "embed_model":             EMBED_MODEL,
+            "kg_model":                args.kg_model,
+            "total_questions":         total_q_ckpt,
+            "answered":                len(answered_ckpt),
+            "unanswered":              total_q_ckpt - len(answered_ckpt),
+            "answer_rate_pct":         round(len(answered_ckpt) / max(total_q_ckpt, 1) * 100, 1),
+            "exact_match":             round(sum(r["exact_match"] for r in qa_records) / max(total_q_ckpt, 1), 4),
+            "f1":                      round(sum(r["f1"] for r in qa_records) / max(total_q_ckpt, 1), 4),
+            "em_by_type": {
+                "bridge": round(sum(r["exact_match"] for r in bridge_ckpt) / max(len(bridge_ckpt), 1), 4),
+                "comparison": round(sum(r["exact_match"] for r in comp_ckpt) / max(len(comp_ckpt), 1), 4),
+            },
+            "f1_by_type": {
+                "bridge": round(sum(r["f1"] for r in bridge_ckpt) / max(len(bridge_ckpt), 1), 4),
+                "comparison": round(sum(r["f1"] for r in comp_ckpt) / max(len(comp_ckpt), 1), 4),
+            },
+            "avg_time_per_question_s": round(sum(r["time_s"] for r in qa_records) / max(total_q_ckpt, 1), 3),
+            "total_pipeline_time_s":   round(total_time_ckpt, 2),
+            "checkpoint":              True,
+            "checkpoint_every":        checkpoint_every,
+            "checkpoint_at_question":  total_q_ckpt,
+        }
+
+        output_ckpt = {
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "analysis":     analysis_ckpt,
+            "qa":           qa_records,
+        }
+
+        with open(json_path, "w", encoding="utf-8") as jf:
+            json.dump(output_ckpt, jf, ensure_ascii=False, indent=2, cls=_NumpyEncoder)
+
+        with open(txt_path, "w", encoding="utf-8") as tf:
+            tf.write("HOTPOTQA ALL LEVELS QA OUTPUT  (with Knowledge Graph)\n")
+            tf.write(f"Generated : {output_ckpt['generated_at']}\n")
+            tf.write(f"Model     : {EMBED_MODEL}\n")
+            tf.write(f"KG Model  : {args.kg_model}\n\n")
+            tf.write("ANALYSIS SUMMARY\n" + "=" * 72 + "\n")
+            for k, v in analysis_ckpt.items():
+                tf.write(f"  {k:<40}: {v}\n")
+            tf.write("\n")
+            tf.write("QA RESULTS\n" + "=" * 72 + "\n")
+            for r in qa_records:
+                tf.write(f"\nQ{r['q_num']:04d}  [{r['type']}|{r['level']}]  id={r['_id']}\n")
+                tf.write(f"  Question   : {r['question']}\n")
+                tf.write(f"  Gold       : {r['gold_answer']}\n")
+                tf.write(f"  Predicted  : {r['predicted_answer']}\n")
+                tf.write(f"  EM={r['exact_match']:.0f}  F1={r['f1']:.4f}  Time={r['time_s']}s\n")
+                if r["evidence_spans"]:
+                    tf.write(f"  Top span   : {r['evidence_spans'][0][:120].strip()}...\n")
+                tf.write("-" * 72 + "\n")
+
+        _cprint(
+            f"  [checkpoint] saved {total_q_ckpt} results -> {json_path} / {txt_path}",
+            "white",
+        )
 
     print("=" * 72)
     print("  HOTPOTQA - QA RESULTS (with Knowledge Graph)")
@@ -416,6 +492,26 @@ def main():
                 e1, e2       = extract_comparison_entities(question)
                 comp_subtype = classify_comparison_type(question)
 
+                def _trim_answer_text(text: str) -> str:
+                    text = (text or "").strip()
+                    text = re.sub(r'^[\s\("\'\[]+', '', text)
+                    text = re.sub(r'[\s\)\]\.\,\;\:\!\?"\']+$', '', text)
+                    return text.strip()
+
+                def _cmp_norm(text: str) -> str:
+                    return re.sub(r'[^a-z0-9]+', ' ', (text or '').lower()).strip()
+
+                def _entity_match_score(answer_text: str, entity: str) -> int:
+                    ans = _cmp_norm(answer_text)
+                    ent = _cmp_norm(entity)
+                    if not ans or not ent:
+                        return 0
+                    score = 0
+                    if ent in ans or ans in ent:
+                        score += 5
+                    score += len(set(ans.split()) & set(ent.split()))
+                    return score
+
                 def _retrieve(entity: str) -> List[str]:
                     hits: List[str] = []
                     for n in spans:
@@ -505,6 +601,29 @@ def main():
                                     (is_recent and y1 > y2)
                                 ) else e2
 
+                    # Final strict normalization for comparison outputs.
+                    if comp_subtype == "boolean":
+                        ans_norm = _cmp_norm(answer)
+                        if re.search(r'\byes\b', ans_norm):
+                            answer = "yes"
+                        elif re.search(r'\bno\b', ans_norm):
+                            answer = "no"
+                        else:
+                            neg_hits = [" not ", " no ", " neither ", " different ", " not both "]
+                            answer = "no" if any(h in f" {all_evid} " for h in neg_hits) else "yes"
+
+                    if comp_subtype in ("comparative", "select_one"):
+                        answer = _trim_answer_text(answer)
+                        s1 = _entity_match_score(answer, e1)
+                        s2 = _entity_match_score(answer, e2)
+                        if s1 > s2:
+                            answer = e1
+                        elif s2 > s1:
+                            answer = e2
+                        else:
+                            # Tie-break toward stronger retrieval support.
+                            answer = e1 if len(e1_texts) >= len(e2_texts) else e2
+
                     # Add a short KG path between compared entities when available.
                     bridge_path = kg.shortest_path_evidence(e1, e2)
                     if bridge_path:
@@ -513,6 +632,16 @@ def main():
                             f"  [KG comp path] {' | '.join(bridge_path[:2])}",
                             "white",
                         )
+
+                # Enforce strict yes/no even if entity extraction fails.
+                if comp_subtype == "boolean" and answer.lower() not in ("yes", "no"):
+                    ans_norm = _cmp_norm(answer)
+                    if re.search(r'\byes\b', ans_norm):
+                        answer = "yes"
+                    elif re.search(r'\bno\b', ans_norm):
+                        answer = "no"
+                    else:
+                        answer = "no"
 
             except Exception as exc:
                 print(f"  [comp error] {exc}")
@@ -607,6 +736,9 @@ def main():
                 "kg_entity_labels": kg_stats["entity_labels"],
             },
         })
+
+        if len(qa_records) % checkpoint_every == 0:
+            _write_checkpoint_outputs()
 
         # Release graph/reasoner objects to reduce memory growth.
         del drg, span_graph_builder, span_extractor, reasoner, results, kg
@@ -747,9 +879,6 @@ def main():
         print("\n" + "=" * 72)
 
     # Save JSON and text reports for the final submission/report.
-    out_dir   = os.path.dirname(os.path.abspath(dataset_path))
-    json_path = os.path.join(out_dir, "hotpot_all_qa_output.json")
-    txt_path  = os.path.join(out_dir, "hotpot_all_qa_output.txt")
 
     output = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
