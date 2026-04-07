@@ -11,6 +11,7 @@ from parser.drg_graph import DocumentReasoningGraph
 from parser.span_extractor import SpanExtractor
 from parser.span_graph import SpanGraph
 from parser.knowledge_graph import KnowledgeGraph
+from parser.config import HOTPOT_EMBED_MODEL
 
 from parser.enhanced_reasoner import EnhancedHybridReasoner
 from parser.advanced_retrieval import normalize_text, tokenize
@@ -49,8 +50,8 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         doc = extract_document_with_tables(tmp_path)
         pages = doc.get('pages', [])
         
-        # Choose a single embedding model for consistency across components
-        chosen_model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        # Use the same embedding model as Hotpot pipeline for consistent behavior.
+        chosen_model = HOTPOT_EMBED_MODEL
 
         # Build sentence graph
         sentence_nodes = build_nodes(pages)
@@ -97,7 +98,7 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
             span_graph=span_graph_builder.graph,
             kg_graph=kg.graph,
             model_name=chosen_model,
-            use_cross_encoder=False
+            use_cross_encoder=True
         )
         
         return {
@@ -112,7 +113,11 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         }
     
     finally:
-        os.unlink(tmp_path)
+        try:
+            os.unlink(tmp_path)
+        except PermissionError:
+            # On Windows the file handle can remain briefly locked by a backend.
+            pass
 
 
 def extract_answer_text(results, span_graph, query, reasoner=None, max_length=300):

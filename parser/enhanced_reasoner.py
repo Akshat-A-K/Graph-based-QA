@@ -42,6 +42,7 @@ from .advanced_retrieval import (
     tokenize
 )
 from .question_processor import QuestionProcessor
+from .config import BATCH_EMBED_MODEL
 
 
 class EnhancedHybridReasoner:
@@ -52,7 +53,7 @@ class EnhancedHybridReasoner:
     
     def __init__(self, sentence_graph: nx.Graph, span_graph: nx.Graph,
                  kg_graph: nx.Graph = None,
-                 model_name="sentence-transformers/all-mpnet-base-v2",
+                 model_name=BATCH_EMBED_MODEL,
                  use_cross_encoder=True):
         self.sentence_graph = sentence_graph
         self.span_graph = span_graph
