@@ -24,6 +24,7 @@ import random
 import string
 import argparse
 import numpy as np
+from parser.config import HOTPOT_EMBED_MODEL
 
 # Handle Windows console encoding
 if sys.platform == "win32":
@@ -211,7 +212,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num", type=int, default=50)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--embed-model",
-                        default="BAAI/bge-large-en-v1.5")
+                        default=HOTPOT_EMBED_MODEL)
     parser.add_argument("--level", default="all",
                         choices=["easy", "medium", "hard", "all"])
     parser.add_argument("--drg-threshold", type=float, default=0.75)

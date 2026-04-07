@@ -7,6 +7,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from collections import Counter, defaultdict
 import re
 import matplotlib.pyplot as plt
+from .config import BATCH_EMBED_MODEL
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend
 
@@ -15,7 +16,7 @@ class DocumentReasoningGraph:
     def __init__(
         self,
         # Use an English-focused embedding model by default
-        model_name="sentence-transformers/all-mpnet-base-v2",
+        model_name=BATCH_EMBED_MODEL,
         enable_model_ner: bool = False
     ):
         print("Loading DRG model...")
