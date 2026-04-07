@@ -43,7 +43,8 @@ def _fix_null_encoded(text: str) -> str:
     # Remove any remaining stray null bytes
     text = text.replace("\x00", "")
     # Superscript-1 used as rupee-sign substitute: '\\u00b9634' -> '\\u20b9634'
-    text = re.sub(r"\u00b9(\d)", r"\u20b9\1", text)
+    # Use a callable replacement to avoid replacement-string escape parsing issues.
+    text = re.sub(r"\u00b9(\d)", lambda m: "\u20b9" + m.group(1), text)
     return text
 
 
@@ -92,89 +93,93 @@ def extract_pages(pdf_path: str) -> List[Dict]:
     doc = fitz.open(pdf_path)
     pages: List[Dict[str, Any]] = []
 
-    for i, page in enumerate(doc):
-        # Use the rich dict output to preserve font sizes and spans
-        page_dict = page.get_text("dict")
+    try:
+        for i, page in enumerate(doc):
+            # Use the rich dict output to preserve font sizes and spans
+            page_dict = page.get_text("dict")
 
-        blocks_out: List[Dict[str, Any]] = []
-        all_spans_sizes = []
+            blocks_out: List[Dict[str, Any]] = []
+            all_spans_sizes = []
 
-        for block in page_dict.get("blocks", []):
-            if block.get("type") != 0:  # 0 == text block
+            for block in page_dict.get("blocks", []):
+                if block.get("type") != 0:  # 0 == text block
+                    continue
+
+                block_text_lines = []
+                max_span_size = 0.0
+                bold = False
+
+                for line in block.get("lines", []):
+                    line_text_parts = []
+                    for span in line.get("spans", []):
+                        s_text = span.get("text", "")
+                        s_size = float(span.get("size", 0.0))
+                        flags = span.get("flags", 0)
+                        # Collect sizes for page-level median
+                        all_spans_sizes.append(s_size)
+                        max_span_size = max(max_span_size, s_size)
+                        # flag 2 often indicates bold; keep heuristic
+                        if flags & 2:
+                            bold = True
+
+                        line_text_parts.append(s_text)
+
+                    line_text = "".join(line_text_parts)
+                    if line_text.strip():
+                        block_text_lines.append(line_text)
+
+                block_text = "\n".join(block_text_lines).strip()
+                if not block_text:
+                    continue
+
+                blocks_out.append({
+                    "text": block_text,
+                    "max_font_size": max_span_size,
+                    "is_bold": bold,
+                })
+
+            # Determine median size for heading heuristics
+            median_size = 0.0
+            if all_spans_sizes:
+                try:
+                    import statistics
+                    median_size = statistics.median(all_spans_sizes)
+                except Exception:
+                    median_size = float(sum(all_spans_sizes) / len(all_spans_sizes))
+
+            # Mark headings where font size is much larger than median or bold
+            for b in blocks_out:
+                b["is_heading"] = bool(
+                    (median_size and b["max_font_size"] >= median_size + 2.0) or b.get("is_bold")
+                )
+
+            # Compose plain text for compatibility with older callers
+            full_text = "\n\n".join(b["text"] for b in blocks_out)
+            full_text = _clean_text(full_text)
+
+            # If page has no text but OCR is available (and enabled), try OCR on the page image
+            if not full_text.strip() and _ENABLE_OCR:
+                try:
+                    pix = page.get_pixmap()
+                    img = Image.open(io.BytesIO(pix.tobytes()))
+                    ocr_text = pytesseract.image_to_string(img)
+                    full_text = _clean_text(ocr_text)
+                except Exception:
+                    pass
+
+            if not full_text.strip():
                 continue
 
-            block_text_lines = []
-            max_span_size = 0.0
-            bold = False
-
-            for line in block.get("lines", []):
-                line_text_parts = []
-                for span in line.get("spans", []):
-                    s_text = span.get("text", "")
-                    s_size = float(span.get("size", 0.0))
-                    flags = span.get("flags", 0)
-                    # Collect sizes for page-level median
-                    all_spans_sizes.append(s_size)
-                    max_span_size = max(max_span_size, s_size)
-                    # flag 2 often indicates bold; keep heuristic
-                    if flags & 2:
-                        bold = True
-
-                    line_text_parts.append(s_text)
-
-                line_text = "".join(line_text_parts)
-                if line_text.strip():
-                    block_text_lines.append(line_text)
-
-            block_text = "\n".join(block_text_lines).strip()
-            if not block_text:
-                continue
-
-            blocks_out.append({
-                "text": block_text,
-                "max_font_size": max_span_size,
-                "is_bold": bold,
+            pages.append({
+                "page": i + 1,
+                "text": full_text,
+                "blocks": blocks_out,
+                "median_font_size": median_size,
+                "metadata": doc.metadata or {},
             })
 
-        # Determine median size for heading heuristics
-        median_size = 0.0
-        if all_spans_sizes:
-            try:
-                import statistics
-                median_size = statistics.median(all_spans_sizes)
-            except Exception:
-                median_size = float(sum(all_spans_sizes) / len(all_spans_sizes))
-
-        # Mark headings where font size is much larger than median or bold
-        for b in blocks_out:
-            b["is_heading"] = bool(
-                (median_size and b["max_font_size"] >= median_size + 2.0) or b.get("is_bold")
-            )
-
-        # Compose plain text for compatibility with older callers
-        full_text = "\n\n".join(b["text"] for b in blocks_out)
-        full_text = _clean_text(full_text)
-
-        # If page has no text but OCR is available (and enabled), try OCR on the page image
-        if not full_text.strip() and _ENABLE_OCR:
-            try:
-                pix = page.get_pixmap()
-                img = Image.open(io.BytesIO(pix.tobytes()))
-                ocr_text = pytesseract.image_to_string(img)
-                full_text = _clean_text(ocr_text)
-            except Exception:
-                pass
-
-        if not full_text.strip():
-            continue
-
-        pages.append({
-            "page": i + 1,
-            "text": full_text,
-            "blocks": blocks_out,
-            "median_font_size": median_size,
-            "metadata": doc.metadata or {},
-        })
+    finally:
+        doc.close()
 
     return pages
 

@@ -113,7 +113,11 @@ def build_graphs_from_pdf(pdf_bytes, pdf_name):
         }
     
     finally:
-        os.unlink(tmp_path)
+        try:
+            os.unlink(tmp_path)
+        except PermissionError:
+            # On Windows the file handle can remain briefly locked by a backend.
+            pass
 
 
 def extract_answer_text(results, span_graph, query, reasoner=None, max_length=300):
