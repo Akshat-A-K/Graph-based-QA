@@ -24,7 +24,7 @@ def split_into_sentences(text: str) -> List[str]:
         pass
     
     # Fallback: Regex-based sentence splitting (Python 3.14 compatible)
-    # Split on sentence-ending punctuation including Hindi danda characters
+    # Split on sentence-ending punctuation
     sentences = re.split(r'(?<=[.!?\u0964\u0965])\s+', text)
     
     # Filter out very short sentences

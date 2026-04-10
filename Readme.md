@@ -1,5 +1,17 @@
 # Graph-Based QA
 
+# Team: CTRL+ALT+DLT
+
+Akshat 2025201005
+
+Om 2025201008
+
+Hardik 2025201046
+
+Gaurav 2025201050
+
+---
+
 This project is for document question answering using graphs.
 This README has information regarding the project setup and usage.
 
@@ -23,7 +35,8 @@ python --version
 - parser/: all core logic (graphs, retrieval, reasoning)
 - graphs/: output graph files (json, graphml, images)
 - docs/: project docs/flow diagrams
-- ppt.html: presentation file
+- Presentation: Presentation.pdf
+- Report: CTRL+ALT+DLT_Final.pdf
 
 ## One-Time Setup
 
@@ -187,5 +200,5 @@ Useful presentation assets:
 - Architecture diagram: docs/architecture_diagram.pdf
 - DRG graph image: graphs/drg_graph.png
 - Span graph image: graphs/span_graph.png
-- Presentation file: presentation.html
-- Final report PDF (add this file): CTRL+ALT+DLT_final.pdf
+- Presentation file: Presentation.pdf
+- Final report PDF (add this file): CTRL+ALT+DLT_Final.pdf

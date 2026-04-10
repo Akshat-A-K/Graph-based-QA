@@ -79,7 +79,7 @@ Key behavior:
 6. On each question, it runs `enhanced_reasoning(question, k=5)` and then `select_answer(...)`.
 7. It shows the answer, confidence, evidence spans, reasoning chains, retrieval breakdown, and document statistics.
 
-The app uses the embedding model `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` so that the UI path stays aligned with multilingual queries. The visible copy explicitly advertises English, Hindi, and Hinglish support.
+The app uses the embedding model `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` so that the UI path stays aligned with multilingual queries. The visible copy explicitly advertises English support.
 
 ### `run_custom_qa.py`
 
@@ -246,7 +246,7 @@ Each sentence node has:
 
 ### Sentence splitting
 
-`parser/sentence_splitter.py` first tries spaCy sentence segmentation with `en_core_web_sm`. If spaCy is unavailable or fails, it falls back to regex splitting on sentence-ending punctuation, including the Hindi danda characters (U+0964 and U+0965).
+`parser/sentence_splitter.py` first tries spaCy sentence segmentation with `en_core_web_sm`. If spaCy is unavailable or fails, it falls back to regex splitting on sentence-ending punctuation.
 
 The splitter removes sentences shorter than or equal to three characters.
 
@@ -791,7 +791,7 @@ If the best span has zero lexical overlap, the selector scans the whole span gra
 
 If the winning span is not a sentence span, the selector prefers the parent sentence when it exists in the reasoner sentence graph and is short enough.
 
-The final answer text is truncated to `max_length`. If possible, it is cut at the last period or Hindi danda before the cutoff; otherwise it is shortened on a word boundary with an ellipsis.
+The final answer text is truncated to `max_length`. If possible, it is cut at the last period otherwise it is shortened on a word boundary with an ellipsis.
 
 ### Extractive QA refinement
 
@@ -925,7 +925,7 @@ The project uses the following named models and pipelines.
 
 | Model                                                           | Used in                                                                                                      | Short description                                                                                                              |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | `app.py`                                                                                                   | Multilingual sentence embedding model for the UI path. It is chosen to better align with English, Hindi, and Hinglish queries. |
+| `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | `app.py`                                                                                                   | Multilingual sentence embedding model for the UI path. It is chosen to better align with English queries. |
 | `sentence-transformers/all-mpnet-base-v2`                     | `run_custom_qa.py`, `parser/drg_graph.py` default, `parser/enhanced_reasoner.py` default               | General-purpose English sentence embedding model used for sentence and query similarity in the batch pipeline.                 |
 | `BAAI/bge-large-en-v1.5`                                      | `hotpot_dataset.py` default CLI model                                                                      | Large embedding model used for HotpotQA evaluation when not overridden.                                                        |
 | `sentence-transformers/multi-qa-mpnet-base-dot-v1`            | `parser/span_graph.py` default                                                                             | Span embedding default inside the class. It is typically overridden by the entrypoint model.                                   |

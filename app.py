@@ -26,7 +26,7 @@ st.markdown("""
 <div style='background-color: #0e1117; padding: 1rem; border-radius: 0.5rem; border-left: 4px solid #4CAF50;'>
     <p style='margin: 0; color: #e0e0e0;'>
         <strong>Multi-level graph reasoning</strong> for faithful document question answering.<br>
-        Supports <strong>multilingual queries</strong> including English, Hindi, and Hinglish.
+        Supports <strong>multilingual queries</strong> including English.
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -342,8 +342,8 @@ if st.session_state.graphs:
         question = st.text_input(
             "Type your own question:",
             value="",
-            placeholder="e.g., What is the deadline? / Antim tarikh kya hai? / Submission kab tak?",
-            help="Ask in English, Hindi, or Hinglish!",
+            placeholder="e.g., What is the deadline?",
+            help="Ask in English!",
             key="question_input"
         )
         
@@ -496,7 +496,7 @@ if st.session_state.graphs:
         - Query expansion
         
         **Languages Supported:**
-        - Hindi / Hinglish / English
+        - English
         """)
 
 else:
@@ -512,7 +512,7 @@ else:
     col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown("### Multilingual")
-        st.markdown("Ask questions in **English, Hindi, or Hinglish**")
+        st.markdown("Ask questions in **English**")
     with col2:
         st.markdown("### Evidence-Based")
         st.markdown("Get **faithful answers** with supporting text spans")
@@ -535,7 +535,7 @@ else:
         
         ### Key Features
         
-        - **Multilingual**: English, Hindi, Hinglish support
+        - **Language**: English support
         - **Zero-shot**: No training required
         - **Graph-based**: Multi-level reasoning (sentence + span + knowledge)
         - **Faithful**: Evidence-based answers with proper citations
